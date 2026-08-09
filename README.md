@@ -15,6 +15,10 @@
 - 跟随系统或手动选择深色/浅色主题
 - 可调字号、行距和页面边距
 - 自动生成本页目录，并高亮当前章节
+- 页内关键词查找、匹配计数和上一处/下一处
+- 收藏笔记、完整阅读历史与一键清空
+- 自定义首页及文件、收藏、历史、同步快捷入口
+- 同步阶段、写入文件数、最后同步时间、错误原因与重试
 - 支持笔记跳转历史和 Android 系统返回键
 
 ### Markdown 与 Obsidian 语法
@@ -36,6 +40,9 @@
 - KaTeX 0.18.2 行内/块级数学公式（离线）
 - Highlight.js 11.11.1 代码语法高亮（离线）
 - `.obsidian/snippets/*.css` 自定义样式
+- Dataview 安全查询：`LIST`、`TABLE`、`TASK`、`FROM`、`WHERE`、`SORT`
+- Dataview Frontmatter 与 `Field:: Value` 行内字段
+- Quizzable 七种题型、评分、解析、重试和本地答题进度
 
 ## 技术栈
 
@@ -137,7 +144,11 @@ app/src/main/java/com/morgan/obsidianviewer/
 - [x] 深色模式和最近打开
 - [ ] 使用真实 Vault 进行兼容性测试
 - [x] 私有 GitHub 仓库只读下载与同步状态
-- [x] 启动自动同步、15 分钟节流与仅 Wi-Fi 选项
+- [x] 每次启动自动同步与仅 Wi-Fi 选项
+- [x] 收藏、阅读历史、首页快捷入口与页内查找
+- [x] 同步进度、失败原因与重试
+- [x] Dataview 常用查询语法兼容（不执行 DataviewJS）
+- [x] Quizzable 交互题目与本地进度
 - [ ] 后台自动同步
 - [x] 阅读设置、主题和自定义 CSS
 - [x] Mermaid、KaTeX 和代码语法高亮

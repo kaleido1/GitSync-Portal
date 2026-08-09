@@ -2,6 +2,7 @@ package com.morgan.obsidianviewer
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,18 +20,29 @@ data class GitHubSyncResult(
     val branch: String,
     val copiedFiles: Int,
     val syncedAt: Instant,
+    val commitSha: String,
+    val changed: Boolean,
 )
+
+data class GitHubSyncProgress(val stage: String, val filesWritten: Int = 0)
 
 object GitHubSynchronizer {
     private const val OWNER = "MorganTian886"
     private const val REPOSITORY = "Obsidian"
     private const val API_VERSION = "2026-03-10"
 
-    suspend fun sync(context: Context, vaultUri: Uri, token: String): GitHubSyncResult =
+    suspend fun sync(
+        context: Context,
+        vaultUri: Uri,
+        token: String,
+        previousCommitSha: String? = null,
+        onProgress: (GitHubSyncProgress) -> Unit = {},
+    ): GitHubSyncResult =
         withContext(Dispatchers.IO) {
             require(token.isNotBlank()) { "请先输入 GitHub token。" }
             val root = DocumentFile.fromTreeUri(context, vaultUri)
                 ?: error("无法访问已选择的 Vault。")
+            onProgress(GitHubSyncProgress("正在连接 GitHub…"))
             val metadata = request(
                 "https://api.github.com/repos/$OWNER/$REPOSITORY",
                 token,
@@ -40,16 +52,88 @@ object GitHubSynchronizer {
             }
             val branch = metadata.getString("default_branch")
             val encodedBranch = URLEncoder.encode(branch, StandardCharsets.UTF_8.toString())
+            onProgress(GitHubSyncProgress("正在检查最新 commit…"))
+            val commitSha = request(
+                "https://api.github.com/repos/$OWNER/$REPOSITORY/commits/$encodedBranch",
+                token,
+            ).use { connection ->
+                ensureSuccess(connection)
+                connection.inputStream.bufferedReader().use { JSONObject(it.readText()).getString("sha") }
+            }
+            if (previousCommitSha != null && previousCommitSha.equals(commitSha, ignoreCase = true)) {
+                return@withContext GitHubSyncResult(branch, 0, Instant.now(), commitSha, changed = false)
+            }
+            if (previousCommitSha != null && SHA.matches(previousCommitSha)) {
+                val incremental = runCatching {
+                    copyCommitChanges(context, root, token, previousCommitSha, commitSha, onProgress)
+                }.getOrNull()
+                if (incremental != null) {
+                    return@withContext GitHubSyncResult(branch, incremental, Instant.now(), commitSha, changed = true)
+                }
+                onProgress(GitHubSyncProgress("增量比较不可用，正在完整下载…"))
+            }
+            onProgress(GitHubSyncProgress("正在下载 Vault 压缩包…"))
             val archive = request(
                 "https://api.github.com/repos/$OWNER/$REPOSITORY/zipball/$encodedBranch",
                 token,
             )
             archive.use { connection ->
                 ensureSuccess(connection)
-                val copied = copyArchiveIntoVault(context, root, connection.inputStream)
-                GitHubSyncResult(branch, copied, Instant.now())
+                val copied = copyArchiveIntoVault(context, root, connection.inputStream, onProgress)
+                GitHubSyncResult(branch, copied, Instant.now(), commitSha, changed = true)
             }
         }
+
+    private fun copyCommitChanges(
+        context: Context,
+        root: DocumentFile,
+        token: String,
+        previousCommitSha: String,
+        commitSha: String,
+        onProgress: (GitHubSyncProgress) -> Unit,
+    ): Int {
+        onProgress(GitHubSyncProgress("正在比较 commit 变更…"))
+        val comparison = request(
+            "https://api.github.com/repos/$OWNER/$REPOSITORY/compare/$previousCommitSha...$commitSha",
+            token,
+        ).use { connection ->
+            ensureSuccess(connection)
+            connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+        }
+        val files = comparison.getJSONArray("files")
+        // GitHub Compare API caps this list; fall back rather than silently miss files.
+        if (files.length() >= 300) error("变更文件过多，需要完整同步。")
+        var copied = 0
+        for (index in 0 until files.length()) {
+            val file = files.getJSONObject(index)
+            if (file.optString("status") == "removed") continue
+            val path = file.getString("filename")
+            if (!isSafePath(path)) continue
+            val blobSha = file.getString("sha")
+            val blobUrl = "https://api.github.com/repos/$OWNER/$REPOSITORY/git/blobs/$blobSha"
+            val blob = request(blobUrl, token).use { connection ->
+                ensureSuccess(connection)
+                connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+            }
+            require(blob.optString("encoding") == "base64") { "GitHub blob 编码不受支持：$path" }
+            val bytes = Base64.decode(blob.getString("content"), Base64.DEFAULT)
+            writeFile(context, root, path, bytes)
+            copied++
+            onProgress(GitHubSyncProgress("正在增量写入 Vault…", copied))
+        }
+        return copied
+    }
+
+    private fun writeFile(context: Context, root: DocumentFile, path: String, bytes: ByteArray) {
+        val parentPath = path.substringBeforeLast('/', "")
+        val fileName = path.substringAfterLast('/')
+        val parent = ensureDirectory(root, parentPath)
+        val mime = URLConnection.guessContentTypeFromName(fileName) ?: "application/octet-stream"
+        val target = parent.findFile(fileName) ?: parent.createFile(mime, fileName)
+            ?: error("无法创建文件：$path")
+        context.contentResolver.openOutputStream(target.uri, "wt")?.use { it.write(bytes) }
+            ?: error("无法写入文件：$path")
+    }
 
     private fun request(url: String, token: String): HttpURLConnection {
         var current = URL(url)
@@ -90,7 +174,12 @@ object GitHubSynchronizer {
         )
     }
 
-    private fun copyArchiveIntoVault(context: Context, root: DocumentFile, input: java.io.InputStream): Int {
+    private fun copyArchiveIntoVault(
+        context: Context,
+        root: DocumentFile,
+        input: java.io.InputStream,
+        onProgress: (GitHubSyncProgress) -> Unit,
+    ): Int {
         var copied = 0
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             while (true) {
@@ -110,6 +199,7 @@ object GitHubSynchronizer {
                         zip.copyTo(output, DEFAULT_BUFFER_SIZE)
                     } ?: error("无法写入文件：$path")
                     copied++
+                    onProgress(GitHubSyncProgress("正在写入 Vault…", copied))
                 }
                 zip.closeEntry()
             }
@@ -135,6 +225,8 @@ object GitHubSynchronizer {
 
     private fun isTrustedGitHubHost(host: String): Boolean =
         host == "api.github.com" || host == "codeload.github.com"
+
+    private val SHA = Regex("[0-9a-fA-F]{40}")
 }
 
 private inline fun <T> HttpURLConnection.use(block: (HttpURLConnection) -> T): T =

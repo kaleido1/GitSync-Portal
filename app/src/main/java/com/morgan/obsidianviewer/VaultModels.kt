@@ -22,7 +22,13 @@ data class VaultIndex(
     val snippetCss: String = "",
 ) {
     fun findNote(target: String): VaultNote? {
-        val clean = Uri.decode(target)
+        var decoded = target
+        repeat(3) {
+            val next = Uri.decode(decoded).replace('+', ' ')
+            if (next == decoded) return@repeat
+            decoded = next
+        }
+        val clean = decoded
             .substringBefore('#')
             .removeSuffix(".md")
             .replace('\\', '/')
