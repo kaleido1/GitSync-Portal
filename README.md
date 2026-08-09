@@ -1,5 +1,7 @@
 # Obsidian Viewer for Android
 
+[中文](README.md) | [English](README_EN.md)
+
 一个面向 Android 的只读 Obsidian Vault 阅读器。项目使用 Kotlin、Jetpack Compose 和系统 Storage Access Framework（SAF），无需申请整个手机存储空间的访问权限。
 
 > 当前版本：`0.2.0`。项目仍处于早期开发阶段，请勿将它视为 Vault 的唯一副本。
