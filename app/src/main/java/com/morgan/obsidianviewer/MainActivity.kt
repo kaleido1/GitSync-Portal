@@ -17,6 +17,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +33,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,6 +59,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +88,7 @@ private fun ObsidianViewerApp(context: Context) {
     var showSettings by remember { mutableStateOf(false) }
     var autoSyncEnabled by remember { mutableStateOf(loadBoolean(context, KEY_AUTO_SYNC, true)) }
     var wifiOnly by remember { mutableStateOf(loadBoolean(context, KEY_WIFI_ONLY, true)) }
+    var readerPreferences by remember { mutableStateOf(loadReaderPreferences(context)) }
 
     LaunchedEffect(searchQuery) {
         delay(250)
@@ -179,13 +184,14 @@ private fun ObsidianViewerApp(context: Context) {
         }
     }
 
-    ObsidianViewerTheme {
+    ObsidianViewerTheme(readerPreferences.theme) {
         Surface(Modifier.fillMaxSize()) {
             if (page != null) {
                 ReaderScreen(
                     page = page,
                     index = index,
                     context = context,
+                    preferences = readerPreferences,
                     onBack = { history = history.dropLast(1) },
                     onWikiLink = ::navigateWiki,
                 )
@@ -196,6 +202,7 @@ private fun ObsidianViewerApp(context: Context) {
                     isSyncing = isSyncing,
                     autoSyncEnabled = autoSyncEnabled,
                     wifiOnly = wifiOnly,
+                    readerPreferences = readerPreferences,
                     onBack = { showSettings = false },
                     onTokenChange = { githubToken = it },
                     onAutoSyncChange = {
@@ -205,6 +212,10 @@ private fun ObsidianViewerApp(context: Context) {
                     onWifiOnlyChange = {
                         wifiOnly = it
                         saveBoolean(context, KEY_WIFI_ONLY, it)
+                    },
+                    onReaderPreferencesChange = {
+                        readerPreferences = it
+                        saveReaderPreferences(context, it)
                     },
                     onSync = { syncFromGitHub() },
                     onForgetToken = {
@@ -243,10 +254,12 @@ private fun SettingsScreen(
     isSyncing: Boolean,
     autoSyncEnabled: Boolean,
     wifiOnly: Boolean,
+    readerPreferences: ReaderPreferences,
     onBack: () -> Unit,
     onTokenChange: (String) -> Unit,
     onAutoSyncChange: (Boolean) -> Unit,
     onWifiOnlyChange: (Boolean) -> Unit,
+    onReaderPreferencesChange: (ReaderPreferences) -> Unit,
     onSync: () -> Unit,
     onForgetToken: () -> Unit,
 ) {
@@ -254,6 +267,7 @@ private fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
         Button(onClick = onBack) { Text("返回") }
@@ -314,7 +328,52 @@ private fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text(
+            "阅读显示",
+            modifier = Modifier.padding(top = 24.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        ReaderSlider("字号：${readerPreferences.fontSize}", readerPreferences.fontSize.toFloat(), 14f..24f, 9) {
+            onReaderPreferencesChange(readerPreferences.copy(fontSize = it.roundToInt()))
+        }
+        ReaderSlider("行距：${"%.1f".format(readerPreferences.lineHeight)}", readerPreferences.lineHeight, 1.2f..2.2f, 9) {
+            onReaderPreferencesChange(readerPreferences.copy(lineHeight = (it * 10).roundToInt() / 10f))
+        }
+        ReaderSlider("页边距：${readerPreferences.horizontalPadding}", readerPreferences.horizontalPadding.toFloat(), 2f..32f, 14) {
+            onReaderPreferencesChange(readerPreferences.copy(horizontalPadding = it.roundToInt()))
+        }
+        Text("主题", modifier = Modifier.padding(top = 10.dp))
+        Row(Modifier.padding(top = 6.dp)) {
+            ReaderTheme.entries.forEach { theme ->
+                Button(
+                    onClick = { onReaderPreferencesChange(readerPreferences.copy(theme = theme)) },
+                    enabled = readerPreferences.theme != theme,
+                    modifier = Modifier.padding(end = 6.dp),
+                ) {
+                    Text(when (theme) { ReaderTheme.SYSTEM -> "跟随"; ReaderTheme.LIGHT -> "浅色"; ReaderTheme.DARK -> "深色" })
+                }
+            }
+        }
+        SettingSwitch(
+            title = "启用 Obsidian CSS snippets",
+            subtitle = "读取 .obsidian/snippets 中的 CSS",
+            checked = readerPreferences.snippetsEnabled,
+            onCheckedChange = { onReaderPreferencesChange(readerPreferences.copy(snippetsEnabled = it)) },
+        )
     }
+}
+
+@Composable
+private fun ReaderSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onChange: (Float) -> Unit,
+) {
+    Text(label, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium)
+    Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
 }
 
 @Composable
@@ -467,12 +526,18 @@ private fun ReaderScreen(
     page: ReaderPage,
     index: VaultIndex,
     context: Context,
+    preferences: ReaderPreferences,
     onBack: () -> Unit,
     onWikiLink: (String, String?) -> Unit,
 ) {
-    val dark = isSystemInDarkTheme()
-    val rendered = remember(page, dark, index) {
-        MarkdownRenderer.render(page.note, dark, index, page.anchor)
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (preferences.theme) {
+        ReaderTheme.SYSTEM -> systemDark
+        ReaderTheme.LIGHT -> false
+        ReaderTheme.DARK -> true
+    }
+    val rendered = remember(page, dark, index, preferences) {
+        MarkdownRenderer.render(page.note, dark, index, page.anchor, preferences)
     }
     Column(
         modifier = Modifier
@@ -493,7 +558,9 @@ private fun ReaderScreen(
             factory = {
                 WebView(it).apply {
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                    settings.javaScriptEnabled = false
+                    settings.javaScriptEnabled = true
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
                     settings.builtInZoomControls = false
                     settings.displayZoomControls = false
                     webViewClient = VaultWebViewClient(context, index, onWikiLink)
@@ -538,6 +605,20 @@ private class VaultWebViewClient(
 
     override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
         val uri = request.url
+        if (uri.host == "app.local" && uri.path?.startsWith("/assets/") == true) {
+            val path = "vendor/" + uri.path!!.removePrefix("/assets/")
+            val mime = when {
+                path.endsWith(".js") -> "application/javascript"
+                path.endsWith(".css") -> "text/css"
+                path.endsWith(".woff2") -> "font/woff2"
+                path.endsWith(".woff") -> "font/woff"
+                path.endsWith(".ttf") -> "font/ttf"
+                else -> "application/octet-stream"
+            }
+            return runCatching {
+                WebResourceResponse(mime, if (mime.startsWith("text/") || mime.contains("javascript")) "UTF-8" else null, context.assets.open(path))
+            }.getOrNull()
+        }
         if (uri.host != "vault.local" || uri.path != "/image") return null
         val asset = index.findAsset(uri.getQueryParameter("path").orEmpty()) ?: return null
         val stream = context.contentResolver.openInputStream(asset.uri) ?: return null
@@ -546,9 +627,15 @@ private class VaultWebViewClient(
 }
 
 @Composable
-private fun ObsidianViewerTheme(content: @Composable () -> Unit) {
+private fun ObsidianViewerTheme(theme: ReaderTheme, content: @Composable () -> Unit) {
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (theme) {
+        ReaderTheme.SYSTEM -> systemDark
+        ReaderTheme.LIGHT -> false
+        ReaderTheme.DARK -> true
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+        colorScheme = if (dark) darkColorScheme() else lightColorScheme(),
         content = content,
     )
 }

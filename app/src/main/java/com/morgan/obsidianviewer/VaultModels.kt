@@ -19,6 +19,7 @@ data class VaultNote(
 data class VaultIndex(
     val notes: List<VaultNote> = emptyList(),
     val assets: List<VaultFile> = emptyList(),
+    val snippetCss: String = "",
 ) {
     fun findNote(target: String): VaultNote? {
         val clean = Uri.decode(target)
@@ -69,14 +70,25 @@ fun buildVaultIndex(context: Context, treeUri: Uri): VaultIndex {
     val root = DocumentFile.fromTreeUri(context, treeUri) ?: return VaultIndex()
     val notes = mutableListOf<VaultNote>()
     val assets = mutableListOf<VaultFile>()
+    val snippets = mutableListOf<String>()
 
     fun walk(directory: DocumentFile, parent: String) {
         directory.listFiles().forEach { document ->
             val name = document.name ?: return@forEach
-            if (name == ".obsidian" || name.startsWith('.')) return@forEach
+            if (name.startsWith('.') && name != ".obsidian") return@forEach
             val path = if (parent.isEmpty()) name else "$parent/$name"
             when {
+                document.isDirectory && name == ".obsidian" -> {
+                    document.findFile("snippets")?.takeIf(DocumentFile::isDirectory)?.let {
+                        walk(it, ".obsidian/snippets")
+                    }
+                }
                 document.isDirectory -> walk(document, path)
+                document.isFile && parent == ".obsidian/snippets" && name.endsWith(".css", true) -> {
+                    val css = context.contentResolver.openInputStream(document.uri)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    snippets += "/* $name */\n$css"
+                }
                 document.isFile && name.endsWith(".md", ignoreCase = true) -> {
                     val file = VaultFile(name, path, document.uri, document.type)
                     val content = context.contentResolver.openInputStream(document.uri)
@@ -91,5 +103,5 @@ fun buildVaultIndex(context: Context, treeUri: Uri): VaultIndex {
     }
 
     walk(root, "")
-    return VaultIndex(notes = notes, assets = assets)
+    return VaultIndex(notes = notes, assets = assets, snippetCss = snippets.joinToString("\n"))
 }

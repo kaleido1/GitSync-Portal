@@ -28,7 +28,13 @@ object MarkdownRenderer {
         .sanitizeUrls(false)
         .build()
 
-    fun render(note: VaultNote, dark: Boolean, index: VaultIndex, requestedAnchor: String? = null): RenderedNote {
+    fun render(
+        note: VaultNote,
+        dark: Boolean,
+        index: VaultIndex,
+        requestedAnchor: String? = null,
+        preferences: ReaderPreferences = ReaderPreferences(),
+    ): RenderedNote {
         val (frontmatter, markdownBody) = extractFrontmatter(note.content)
         val expanded = expandEmbeds(markdownBody, index, mutableSetOf(note.file.relativePath), 0)
         val linked = rewriteLinks(expanded, note, index)
@@ -42,7 +48,7 @@ object MarkdownRenderer {
             "<details class=\"frontmatter\"><summary>Properties</summary><pre>${escapeHtml(it)}</pre></details>"
         }.orEmpty()
         return RenderedNote(
-            html = htmlDocument(frontmatterHtml + body, dark),
+            html = htmlDocument(frontmatterHtml + body, dark, preferences, index.snippetCss),
             anchor = requestedAnchor?.let(Uri::decode),
         )
     }
@@ -142,16 +148,45 @@ object MarkdownRenderer {
         "<blockquote class=\"callout $type\"><strong>$title</strong>${match.groupValues[3]}</blockquote>"
     }
 
-    private fun htmlDocument(body: String, dark: Boolean): String {
+    private fun htmlDocument(
+        body: String,
+        dark: Boolean,
+        preferences: ReaderPreferences,
+        snippetCss: String,
+    ): String {
         val background = if (dark) "#121212" else "#fafafa"
         val foreground = if (dark) "#e6e1e5" else "#242424"
         val secondary = if (dark) "#cac4d0" else "#555"
         val border = if (dark) "#49454f" else "#ddd"
         val code = if (dark) "#242126" else "#f1eff3"
+        val safeSnippets = if (preferences.snippetsEnabled) {
+            snippetCss.replace("</style", "<\\/style", ignoreCase = true)
+        } else ""
+        val highlightTheme = if (dark) "github-dark-11.11.1.min.css" else "github-11.11.1.min.css"
         return """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://vault.local data:; style-src https://app.local 'unsafe-inline'; font-src https://app.local; script-src https://app.local 'unsafe-inline'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'">
+<link rel="stylesheet" href="https://app.local/assets/katex/katex-0.18.2.min.css">
+<link rel="stylesheet" href="https://app.local/assets/highlight/$highlightTheme">
 <style>
-:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px 2px 80px;background:$background;color:$foreground;font:17px/1.7 system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4{line-height:1.3;margin:1.25em 0 .5em;scroll-margin-top:12px}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{padding:10px 14px;border:1px solid $border;border-radius:8px;color:$secondary}.frontmatter pre{white-space:pre-wrap;background:transparent;padding:8px 0;margin:0}.callout{border-radius:8px;border-left-width:5px}.callout.warning,.callout.caution{border-color:#f59e0b}.callout.danger,.callout.failure{border-color:#ef4444}.callout.success,.callout.tip{border-color:#22c55e}.block-id{display:block;position:relative;top:-12px;visibility:hidden}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}
-</style></head><body>$body</body></html>"""
+:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px ${preferences.horizontalPadding}px 90px;background:$background;color:$foreground;font:${preferences.fontSize}px/${preferences.lineHeight} system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:1.25em 0 .5em;scroll-margin-top:12px}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0;background:transparent}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{padding:10px 14px;border:1px solid $border;border-radius:8px;color:$secondary}.frontmatter pre{white-space:pre-wrap;background:transparent;padding:8px 0;margin:0}.callout{border-radius:8px;border-left-width:5px}.callout.warning,.callout.caution{border-color:#f59e0b}.callout.danger,.callout.failure{border-color:#ef4444}.callout.success,.callout.tip{border-color:#22c55e}.block-id{display:block;position:relative;top:-12px;visibility:hidden}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}.mermaid{overflow:auto;text-align:center;margin:1.2em 0}#toc-toggle{position:fixed;right:18px;bottom:22px;z-index:20;border:0;border-radius:999px;padding:11px 15px;background:#8b6fd6;color:white;font-weight:700;box-shadow:0 4px 18px #0006}.render-error{padding:10px;border:1px solid #ef4444;border-radius:8px;color:#ef4444}
+</style><style id="vault-snippets">$safeSnippets</style><style id="toc-layout">
+#toc-panel{position:fixed!important;left:4vw!important;right:4vw!important;bottom:76px!important;z-index:19!important;width:auto!important;height:7cm!important;min-height:7cm!important;max-width:none!important;max-height:7cm!important;overflow-y:auto!important;padding:18px 14px!important;background:$background!important;border:1px solid $border!important;border-radius:18px!important;box-shadow:0 8px 30px #0009!important;display:none!important}#toc-panel.open{display:block!important}#toc-panel a{display:block!important;padding:12px 10px!important;min-height:48px!important;text-decoration:none!important;border-radius:9px!important;color:$foreground!important;font-size:1.05em!important;line-height:1.35!important}#toc-panel a.active{background:$code!important;color:#9c7de8!important}
+</style></head><body>$body
+<button id="toc-toggle" type="button" hidden>目录</button><nav id="toc-panel" aria-label="本页目录"></nav>
+<script src="https://app.local/assets/highlight/highlight-11.11.1.min.js"></script>
+<script src="https://app.local/assets/katex/katex-0.18.2.min.js"></script>
+<script src="https://app.local/assets/katex/auto-render-0.18.2.min.js"></script>
+<script src="https://app.local/assets/mermaid/mermaid-11.16.1.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded',async()=>{
+  const showError=(message)=>{const e=document.createElement('div');e.className='render-error';e.textContent=message;document.body.prepend(e)};
+  try{document.querySelectorAll('pre code.language-mermaid').forEach(code=>{const box=document.createElement('div');box.className='mermaid';box.textContent=code.textContent;code.parentElement.replaceWith(box)});mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'${if (dark) "dark" else "default"}'});await mermaid.run({querySelector:'.mermaid'});}catch(e){showError('Mermaid 渲染失败：'+e.message)}
+  try{hljs.highlightAll()}catch(e){showError('代码高亮失败：'+e.message)}
+  try{renderMathInElement(document.body,{delimiters:[{left:'${'$'}${'$'}',right:'${'$'}${'$'}',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false},{left:'${'$'}',right:'${'$'}',display:false}],throwOnError:false,ignoredClasses:['mermaid']})}catch(e){showError('公式渲染失败：'+e.message)}
+  const headings=[...document.querySelectorAll('h1,h2,h3,h4,h5,h6')];const panel=document.getElementById('toc-panel');const toggle=document.getElementById('toc-toggle');
+  if(headings.length){toggle.hidden=false;headings.forEach((h,i)=>{if(!h.id)h.id='section-'+i;const a=document.createElement('a');a.textContent=h.textContent;a.href='#'+encodeURIComponent(h.id);a.style.paddingLeft=(8+(Number(h.tagName[1])-1)*12)+'px';a.onclick=e=>{e.preventDefault();h.scrollIntoView({behavior:'smooth'});history.replaceState(null,'','#'+encodeURIComponent(h.id));panel.classList.remove('open')};panel.appendChild(a)});toggle.onclick=()=>panel.classList.toggle('open');const links=[...panel.querySelectorAll('a')];new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(a=>a.classList.toggle('active',decodeURIComponent(a.hash.slice(1))===entry.target.id))}}),{rootMargin:'-10% 0px -75% 0px'}).observe(headings[0]);headings.slice(1).forEach(h=>new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(a=>a.classList.toggle('active',decodeURIComponent(a.hash.slice(1))===entry.target.id))}}),{rootMargin:'-10% 0px -75% 0px'}).observe(h));}
+});
+</script></body></html>"""
     }
 
     private fun vaultImageUrl(path: String) = "https://vault.local/image?path=${encode(path)}"

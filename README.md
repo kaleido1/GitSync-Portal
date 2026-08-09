@@ -12,7 +12,9 @@
 - 显示笔记相对路径和最近打开记录
 - 搜索文件名与 Markdown 正文
 - 支持下拉刷新和按钮刷新
-- 跟随系统深色/浅色主题
+- 跟随系统或手动选择深色/浅色主题
+- 可调字号、行距和页面边距
+- 自动生成本页目录，并高亮当前章节
 - 支持笔记跳转历史和 Android 系统返回键
 
 ### Markdown 与 Obsidian 语法
@@ -30,6 +32,10 @@
 - `![[笔记]]` 笔记嵌入
 - YAML Frontmatter/Properties
 - Obsidian Callout（Note、Tip、Warning、Danger、Success 等）
+- Mermaid 11.16.1 图表（离线）
+- KaTeX 0.18.2 行内/块级数学公式（离线）
+- Highlight.js 11.11.1 代码语法高亮（离线）
+- `.obsidian/snippets/*.css` 自定义样式
 
 ## 技术栈
 
@@ -41,7 +47,7 @@
 - WebView 本地 HTML 阅读视图
 - Gradle Kotlin DSL
 
-Markdown 在设备本地解析。Vault 图片通过 WebView 从已授权的文档 URI 流式读取，避免将大图完整解码进 Compose 内存。
+Markdown 和扩展语法都在设备本地解析。Vault 图片通过 WebView 从已授权的文档 URI 流式读取，避免将大图完整解码进 Compose 内存。Mermaid、KaTeX 和 Highlight.js 固定版本资源随 APK 打包，不依赖 CDN。
 
 ## 环境要求
 
@@ -108,6 +114,7 @@ Android 不允许应用直接选择共享存储根目录，因此必须选择一
 app/src/main/java/com/morgan/obsidianviewer/
 ├── MainActivity.kt        # Compose UI、文件夹导航和 WebView 阅读器
 ├── MarkdownRenderer.kt    # Markdown/Obsidian 语法预处理与 HTML 渲染
+├── ReaderPreferences.kt   # 阅读主题、字号、行距和边距设置
 └── VaultModels.kt         # Vault 索引、文件模型和全文搜索缓存
 ```
 
@@ -115,7 +122,8 @@ app/src/main/java/com/morgan/obsidianviewer/
 
 - App 只访问用户通过系统文件选择器明确授权的 Vault。
 - Markdown 解析、搜索和图片加载都在本地完成。
-- WebView 禁用了 JavaScript。
+- WebView 仅为随 APK 打包的 Mermaid、KaTeX、代码高亮和目录功能启用 JavaScript。
+- 内容安全策略（CSP）禁止脚本联网、加载远程脚本、对象和内嵌页面。
 - 外部链接交给系统浏览器处理。
 - GitHub token 使用 Android Keystore 加密后保存在设备上，不写入项目文件或日志。
 - GitHub 同步当前仅下载私有仓库，不会向仓库上传 Vault 内容。
@@ -131,8 +139,8 @@ app/src/main/java/com/morgan/obsidianviewer/
 - [x] 私有 GitHub 仓库只读下载与同步状态
 - [x] 启动自动同步、15 分钟节流与仅 Wi-Fi 选项
 - [ ] 后台自动同步
-- [ ] 阅读设置、主题和自定义 CSS
-- [ ] Mermaid、KaTeX 和代码语法高亮
+- [x] 阅读设置、主题和自定义 CSS
+- [x] Mermaid、KaTeX 和代码语法高亮
 - [ ] Release APK 与自动化测试
 
 ## License
