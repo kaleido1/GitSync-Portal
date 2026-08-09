@@ -3,6 +3,8 @@ package com.morgan.obsidianviewer
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -30,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -78,6 +81,9 @@ private fun ObsidianViewerApp(context: Context) {
     var githubToken by remember { mutableStateOf(TokenStore.load(context)) }
     var syncStatus by remember { mutableStateOf(loadSyncStatus(context)) }
     var isSyncing by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var autoSyncEnabled by remember { mutableStateOf(loadBoolean(context, KEY_AUTO_SYNC, true)) }
+    var wifiOnly by remember { mutableStateOf(loadBoolean(context, KEY_WIFI_ONLY, true)) }
 
     LaunchedEffect(searchQuery) {
         delay(250)
@@ -106,7 +112,7 @@ private fun ObsidianViewerApp(context: Context) {
     fun navigateWiki(target: String, anchor: String?) {
         index.findNote(target)?.let { openNote(it, anchor) }
     }
-    fun syncFromGitHub() {
+    fun syncFromGitHub(automatic: Boolean = false) {
         val uri = vaultUri
         if (uri == null) {
             syncStatus = "请先选择本地 Vault。"
@@ -116,6 +122,11 @@ private fun ObsidianViewerApp(context: Context) {
             syncStatus = "请先输入 fine-grained token。"
             return
         }
+        if (automatic && wifiOnly && !isOnWifi(context)) {
+            syncStatus = "等待 Wi‑Fi 后自动同步。"
+            return
+        }
+        if (isSyncing) return
         scope.launch {
             isSyncing = true
             syncStatus = "正在从 GitHub 下载私有 Vault…"
@@ -127,11 +138,22 @@ private fun ObsidianViewerApp(context: Context) {
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                 syncStatus = "同步完成：${result.branch}，更新 ${result.copiedFiles} 个文件，$time"
                 saveSyncStatus(context, syncStatus)
+                saveLastSyncTime(context, result.syncedAt.toEpochMilli())
                 refreshToken++
             }.onFailure { error ->
                 syncStatus = error.message ?: "GitHub 同步失败。"
             }
             isSyncing = false
+        }
+    }
+    LaunchedEffect(vaultUri, githubToken, autoSyncEnabled, wifiOnly) {
+        if (
+            vaultUri != null &&
+            githubToken.isNotBlank() &&
+            autoSyncEnabled &&
+            System.currentTimeMillis() - loadLastSyncTime(context) >= AUTO_SYNC_INTERVAL_MS
+        ) {
+            syncFromGitHub(automatic = true)
         }
     }
 
@@ -149,9 +171,10 @@ private fun ObsidianViewerApp(context: Context) {
     }
 
     val page = history.lastOrNull()
-    BackHandler(enabled = page != null || folder.isNotEmpty()) {
+    BackHandler(enabled = page != null || showSettings || folder.isNotEmpty()) {
         when {
             page != null -> history = history.dropLast(1)
+            showSettings -> showSettings = false
             folder.isNotEmpty() -> folder = folder.substringBeforeLast('/', "")
         }
     }
@@ -166,6 +189,30 @@ private fun ObsidianViewerApp(context: Context) {
                     onBack = { history = history.dropLast(1) },
                     onWikiLink = ::navigateWiki,
                 )
+            } else if (showSettings) {
+                SettingsScreen(
+                    token = githubToken,
+                    syncStatus = syncStatus,
+                    isSyncing = isSyncing,
+                    autoSyncEnabled = autoSyncEnabled,
+                    wifiOnly = wifiOnly,
+                    onBack = { showSettings = false },
+                    onTokenChange = { githubToken = it },
+                    onAutoSyncChange = {
+                        autoSyncEnabled = it
+                        saveBoolean(context, KEY_AUTO_SYNC, it)
+                    },
+                    onWifiOnlyChange = {
+                        wifiOnly = it
+                        saveBoolean(context, KEY_WIFI_ONLY, it)
+                    },
+                    onSync = { syncFromGitHub() },
+                    onForgetToken = {
+                        TokenStore.clear(context)
+                        githubToken = ""
+                        syncStatus = "已从手机删除 GitHub token。"
+                    },
+                )
             } else {
                 VaultBrowser(
                     vaultUri = vaultUri,
@@ -175,20 +222,118 @@ private fun ObsidianViewerApp(context: Context) {
                     debouncedQuery = debouncedQuery,
                     recentNotes = recentPaths.mapNotNull(index::findNote).take(3),
                     isRefreshing = isRefreshing,
-                    githubToken = githubToken,
                     syncStatus = syncStatus,
-                    isSyncing = isSyncing,
                     onPickVault = { vaultPicker.launch(vaultUri) },
                     onRefresh = { refreshToken++ },
                     onSearchChange = { searchQuery = it },
-                    onGitHubTokenChange = { githubToken = it },
-                    onGitHubSync = ::syncFromGitHub,
+                    onOpenSettings = { showSettings = true },
                     onFolderOpen = { name -> folder = if (folder.isEmpty()) name else "$folder/$name" },
                     onFolderUp = { folder = folder.substringBeforeLast('/', "") },
                     onNoteOpen = { openNote(it, replaceHistory = true) },
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    token: String,
+    syncStatus: String,
+    isSyncing: Boolean,
+    autoSyncEnabled: Boolean,
+    wifiOnly: Boolean,
+    onBack: () -> Unit,
+    onTokenChange: (String) -> Unit,
+    onAutoSyncChange: (Boolean) -> Unit,
+    onWifiOnlyChange: (Boolean) -> Unit,
+    onSync: () -> Unit,
+    onForgetToken: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(20.dp),
+    ) {
+        Button(onClick = onBack) { Text("返回") }
+        Text(
+            "设置",
+            modifier = Modifier.padding(top = 20.dp),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            "GitHub 私有仓库同步",
+            modifier = Modifier.padding(top = 24.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "MorganTian886/Obsidian · 只读拉取",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = token,
+            onValueChange = onTokenChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            label = { Text("Fine-grained token") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+        )
+        SettingSwitch(
+            title = "启动时自动同步",
+            subtitle = "距上次成功同步超过 15 分钟时运行",
+            checked = autoSyncEnabled,
+            onCheckedChange = onAutoSyncChange,
+        )
+        SettingSwitch(
+            title = "仅 Wi‑Fi 自动同步",
+            subtitle = "手动同步仍可使用移动网络",
+            checked = wifiOnly,
+            onCheckedChange = onWifiOnlyChange,
+        )
+        Row(Modifier.padding(top = 16.dp)) {
+            Button(onClick = onSync, enabled = !isSyncing && token.isNotBlank()) {
+                Text(if (isSyncing) "正在同步…" else "立即同步")
+            }
+            Spacer(Modifier.width(10.dp))
+            Button(onClick = onForgetToken, enabled = token.isNotBlank() && !isSyncing) {
+                Text("删除 Token")
+            }
+        }
+        if (syncStatus.isNotBlank()) {
+            Text(syncStatus, Modifier.padding(top = 14.dp), style = MaterialTheme.typography.bodyMedium)
+        }
+        Text(
+            "Token 使用 Android Keystore 加密，仅保存在这台手机上。",
+            modifier = Modifier.padding(top = 20.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SettingSwitch(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -201,14 +346,11 @@ private fun VaultBrowser(
     debouncedQuery: String,
     recentNotes: List<VaultNote>,
     isRefreshing: Boolean,
-    githubToken: String,
     syncStatus: String,
-    isSyncing: Boolean,
     onPickVault: () -> Unit,
     onRefresh: () -> Unit,
     onSearchChange: (String) -> Unit,
-    onGitHubTokenChange: (String) -> Unit,
-    onGitHubSync: () -> Unit,
+    onOpenSettings: () -> Unit,
     onFolderOpen: (String) -> Unit,
     onFolderUp: () -> Unit,
     onNoteOpen: (VaultNote) -> Unit,
@@ -230,43 +372,17 @@ private fun VaultBrowser(
                 Button(onClick = onPickVault) { Text(if (vaultUri == null) "选择 Vault" else "更换 Vault") }
                 Spacer(Modifier.width(10.dp))
                 if (vaultUri != null) Button(onClick = onRefresh) { Text("刷新") }
+                Spacer(Modifier.width(10.dp))
+                Button(onClick = onOpenSettings) { Text("设置") }
             }
             if (vaultUri == null) {
                 Text("请选择手机上的 Obsidian Vault。", Modifier.padding(top = 24.dp))
                 return@Column
             }
-            Text(
-                "GitHub 私有仓库同步",
-                modifier = Modifier.padding(top = 16.dp),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "MorganTian886/Obsidian · 只读拉取",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
-                value = githubToken,
-                onValueChange = onGitHubTokenChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                label = { Text("Fine-grained token") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-            )
-            Button(
-                onClick = onGitHubSync,
-                enabled = !isSyncing,
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text(if (isSyncing) "正在同步…" else "从 GitHub 同步")
-            }
             if (syncStatus.isNotBlank()) {
                 Text(
                     syncStatus,
-                    modifier = Modifier.padding(top = 6.dp),
+                    modifier = Modifier.padding(top = 12.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -397,7 +513,7 @@ private fun WebView.loadRenderedNoteIfChanged(rendered: RenderedNote) {
     val renderKey = 31 * rendered.html.hashCode() + rendered.anchor.hashCode()
     if (tag == renderKey) return
     tag = renderKey
-    val base = "https://vault.local/note" + rendered.anchor?.let { "#$it" }.orEmpty()
+    val base = "https://vault.local/note" + rendered.anchor?.let { "#${Uri.encode(it)}" }.orEmpty()
     loadDataWithBaseURL(base, rendered.html, "text/html", "UTF-8", null)
 }
 
@@ -441,6 +557,10 @@ private const val PREFERENCES_NAME = "obsidian_viewer"
 private const val KEY_VAULT_URI = "vault_uri"
 private const val KEY_RECENT_PATHS = "recent_paths"
 private const val KEY_SYNC_STATUS = "sync_status"
+private const val KEY_AUTO_SYNC = "auto_sync"
+private const val KEY_WIFI_ONLY = "wifi_only"
+private const val KEY_LAST_SYNC_TIME = "last_sync_time"
+private const val AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000L
 
 private fun loadVaultUri(context: Context): Uri? = context
     .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -470,4 +590,29 @@ private fun loadSyncStatus(context: Context): String = context
 private fun saveSyncStatus(context: Context, status: String) {
     context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
         .edit().putString(KEY_SYNC_STATUS, status).apply()
+}
+
+private fun loadBoolean(context: Context, key: String, defaultValue: Boolean): Boolean = context
+    .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    .getBoolean(key, defaultValue)
+
+private fun saveBoolean(context: Context, key: String, value: Boolean) {
+    context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        .edit().putBoolean(key, value).apply()
+}
+
+private fun loadLastSyncTime(context: Context): Long = context
+    .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    .getLong(KEY_LAST_SYNC_TIME, 0L)
+
+private fun saveLastSyncTime(context: Context, value: Long) {
+    context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        .edit().putLong(KEY_LAST_SYNC_TIME, value).apply()
+}
+
+private fun isOnWifi(context: Context): Boolean {
+    val manager = context.getSystemService(ConnectivityManager::class.java)
+    val network = manager.activeNetwork ?: return false
+    val capabilities = manager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
 }

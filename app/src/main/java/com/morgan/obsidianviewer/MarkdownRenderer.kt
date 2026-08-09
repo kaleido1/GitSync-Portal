@@ -31,16 +31,19 @@ object MarkdownRenderer {
     fun render(note: VaultNote, dark: Boolean, index: VaultIndex, requestedAnchor: String? = null): RenderedNote {
         val (frontmatter, markdownBody) = extractFrontmatter(note.content)
         val expanded = expandEmbeds(markdownBody, index, mutableSetOf(note.file.relativePath), 0)
-        val linked = rewriteWikiSyntax(expanded, index)
+        val linked = rewriteLinks(expanded, note, index)
         var body = renderer.render(parser.parse(linked))
+        body = rewriteRenderedLinks(body, note)
+        body = rewriteRenderedImages(body, index)
         body = addHeadingIds(body)
+        body = addBlockIds(body)
         body = decorateCallouts(body)
         val frontmatterHtml = frontmatter?.let {
             "<details class=\"frontmatter\"><summary>Properties</summary><pre>${escapeHtml(it)}</pre></details>"
         }.orEmpty()
         return RenderedNote(
             html = htmlDocument(frontmatterHtml + body, dark),
-            anchor = requestedAnchor?.let(::slug),
+            anchor = requestedAnchor?.let(Uri::decode),
         )
     }
 
@@ -77,35 +80,60 @@ object MarkdownRenderer {
         }
     }
 
-    private fun rewriteWikiSyntax(markdown: String, index: VaultIndex): String {
+    private fun rewriteLinks(markdown: String, note: VaultNote, index: VaultIndex): String {
         var output = WIKI_LINK.replace(markdown) { match ->
             val raw = match.groupValues[1]
             val target = raw.substringBefore('|').trim()
             val label = raw.substringAfter('|', target).substringBefore('#').ifBlank { target.substringBefore('#') }
             val heading = target.substringAfter('#', "")
-            val noteTarget = target.substringBefore('#')
+            val noteTarget = target.substringBefore('#').ifBlank { note.file.relativePath }
             val uri = "obsidian://note?path=${encode(noteTarget)}" +
                 heading.takeIf { it.isNotEmpty() }?.let { "&heading=${encode(it)}" }.orEmpty()
             "[$label]($uri)"
         }
-        output = MARKDOWN_LOCAL_IMAGE.replace(output) { match ->
-            val alt = match.groupValues[1]
-            val path = match.groupValues[2]
-            if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
-                match.value
-            } else {
-                val asset = index.findAsset(path)
-                if (asset == null) match.value else "![$alt](${vaultImageUrl(asset.relativePath)})"
-            }
-        }
         return output
+    }
+
+    private fun rewriteRenderedLinks(html: String, note: VaultNote): String = HTML_LINK.replace(html) { match ->
+        val beforeHref = match.groupValues[1]
+        val destination = match.groupValues[2]
+        val replacement = when {
+            destination.startsWith("#") -> {
+                val heading = Uri.decode(destination.removePrefix("#"))
+                "obsidian://note?path=${encode(note.file.relativePath)}&heading=${encode(heading)}"
+            }
+            isLocalMarkdownDestination(destination) -> {
+                val rawPath = destination.substringBefore('#')
+                val heading = destination.substringAfter('#', "").let(Uri::decode)
+                val resolved = resolveRelativeNotePath(note.file.relativePath, Uri.decode(rawPath))
+                "obsidian://note?path=${encode(resolved)}" +
+                    heading.takeIf { it.isNotEmpty() }?.let { "&heading=${encode(it)}" }.orEmpty()
+            }
+            else -> destination
+        }
+        "<a$beforeHref href=\"${escapeAttribute(replacement)}\""
+    }
+
+    private fun rewriteRenderedImages(html: String, index: VaultIndex): String = HTML_IMAGE.replace(html) { match ->
+        val beforeSrc = match.groupValues[1]
+        val source = match.groupValues[2]
+        if (source.startsWith("http://") || source.startsWith("https://") || source.startsWith("data:")) {
+            match.value
+        } else {
+            val asset = index.findAsset(Uri.decode(source)) ?: return@replace match.value
+            "<img$beforeSrc src=\"${escapeAttribute(vaultImageUrl(asset.relativePath))}\""
+        }
     }
 
     private fun addHeadingIds(html: String): String = HEADING.replace(html) { match ->
         val level = match.groupValues[1]
         val content = match.groupValues[2]
         val plain = content.replace(HTML_TAG, "")
-        "<h$level id=\"${slug(plain)}\">$content</h$level>"
+        "<h$level id=\"${escapeAttribute(plain)}\">$content</h$level>"
+    }
+
+    private fun addBlockIds(html: String): String = BLOCK_ID.replace(html) { match ->
+        "<span class=\"block-id\" id=\"^${match.groupValues[1]}\"></span>"
     }
 
     private fun decorateCallouts(html: String): String = CALLOUT.replace(html) { match ->
@@ -122,21 +150,40 @@ object MarkdownRenderer {
         val code = if (dark) "#242126" else "#f1eff3"
         return """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px 2px 80px;background:$background;color:$foreground;font:17px/1.7 system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4{line-height:1.3;margin:1.25em 0 .5em}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{padding:10px 14px;border:1px solid $border;border-radius:8px;color:$secondary}.frontmatter pre{white-space:pre-wrap;background:transparent;padding:8px 0;margin:0}.callout{border-radius:8px;border-left-width:5px}.callout.warning,.callout.caution{border-color:#f59e0b}.callout.danger,.callout.failure{border-color:#ef4444}.callout.success,.callout.tip{border-color:#22c55e}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}
+:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px 2px 80px;background:$background;color:$foreground;font:17px/1.7 system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4{line-height:1.3;margin:1.25em 0 .5em;scroll-margin-top:12px}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{padding:10px 14px;border:1px solid $border;border-radius:8px;color:$secondary}.frontmatter pre{white-space:pre-wrap;background:transparent;padding:8px 0;margin:0}.callout{border-radius:8px;border-left-width:5px}.callout.warning,.callout.caution{border-color:#f59e0b}.callout.danger,.callout.failure{border-color:#ef4444}.callout.success,.callout.tip{border-color:#22c55e}.block-id{display:block;position:relative;top:-12px;visibility:hidden}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}
 </style></head><body>$body</body></html>"""
     }
 
     private fun vaultImageUrl(path: String) = "https://vault.local/image?path=${encode(path)}"
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
-    private fun slug(value: String): String = value.trim().lowercase()
-        .replace(Regex("[^\\p{L}\\p{N}]+"), "-")
-        .trim('-')
     private fun escapeHtml(value: String) = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    private fun escapeAttribute(value: String) = escapeHtml(value).replace("\"", "&quot;")
+    private fun isLocalMarkdownDestination(value: String): Boolean {
+        val path = value.substringBefore('#').substringBefore(' ')
+        if ("://" in path || path.startsWith("mailto:") || path.startsWith("tel:")) return false
+        return path.endsWith(".md", ignoreCase = true) || '#' in value
+    }
+
+    private fun resolveRelativeNotePath(currentPath: String, target: String): String {
+        if (target.startsWith('/')) return target.trimStart('/')
+        val segments = currentPath.substringBeforeLast('/', "")
+            .split('/').filter(String::isNotEmpty).toMutableList()
+        target.replace('\\', '/').split('/').forEach { segment ->
+            when (segment) {
+                "", "." -> Unit
+                ".." -> if (segments.isNotEmpty()) segments.removeAt(segments.lastIndex)
+                else -> segments += segment
+            }
+        }
+        return segments.joinToString("/")
+    }
 
     private val OBSIDIAN_EMBED = Regex("!\\[\\[([^]]+)]]")
     private val WIKI_LINK = Regex("(?<!!)\\[\\[([^]]+)]]")
-    private val MARKDOWN_LOCAL_IMAGE = Regex("!\\[([^]]*)]\\(([^)]+)\\)")
+    private val HTML_LINK = Regex("<a([^>]*?) href=\"([^\"]+)\"")
+    private val HTML_IMAGE = Regex("<img([^>]*?) src=\"([^\"]+)\"")
     private val HEADING = Regex("<h([1-6])>(.*?)</h\\1>", setOf(RegexOption.DOT_MATCHES_ALL))
     private val HTML_TAG = Regex("<[^>]+>")
     private val CALLOUT = Regex("<blockquote>\\s*<p>\\[!(\\w+)]\\s*([^<]*)</p>(.*?)</blockquote>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val BLOCK_ID = Regex("\\^([A-Za-z0-9-]+)(?=</p>|</li>)")
 }

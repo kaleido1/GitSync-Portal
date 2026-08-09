@@ -129,6 +129,7 @@ app/src/main/java/com/morgan/obsidianviewer/
 - [x] 深色模式和最近打开
 - [ ] 使用真实 Vault 进行兼容性测试
 - [x] 私有 GitHub 仓库只读下载与同步状态
+- [x] 启动自动同步、15 分钟节流与仅 Wi-Fi 选项
 - [ ] 后台自动同步
 - [ ] 阅读设置、主题和自定义 CSS
 - [ ] Mermaid、KaTeX 和代码语法高亮
