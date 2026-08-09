@@ -45,11 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,6 +75,9 @@ private fun ObsidianViewerApp(context: Context) {
     var debouncedQuery by remember { mutableStateOf("") }
     var history by remember { mutableStateOf<List<ReaderPage>>(emptyList()) }
     var recentPaths by remember { mutableStateOf(loadRecentPaths(context)) }
+    var githubToken by remember { mutableStateOf(TokenStore.load(context)) }
+    var syncStatus by remember { mutableStateOf(loadSyncStatus(context)) }
+    var isSyncing by remember { mutableStateOf(false) }
 
     LaunchedEffect(searchQuery) {
         delay(250)
@@ -99,6 +105,34 @@ private fun ObsidianViewerApp(context: Context) {
     }
     fun navigateWiki(target: String, anchor: String?) {
         index.findNote(target)?.let { openNote(it, anchor) }
+    }
+    fun syncFromGitHub() {
+        val uri = vaultUri
+        if (uri == null) {
+            syncStatus = "请先选择本地 Vault。"
+            return
+        }
+        if (githubToken.isBlank()) {
+            syncStatus = "请先输入 fine-grained token。"
+            return
+        }
+        scope.launch {
+            isSyncing = true
+            syncStatus = "正在从 GitHub 下载私有 Vault…"
+            runCatching {
+                TokenStore.save(context, githubToken.trim())
+                GitHubSynchronizer.sync(context, uri, githubToken.trim())
+            }.onSuccess { result ->
+                val time = result.syncedAt.atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                syncStatus = "同步完成：${result.branch}，更新 ${result.copiedFiles} 个文件，$time"
+                saveSyncStatus(context, syncStatus)
+                refreshToken++
+            }.onFailure { error ->
+                syncStatus = error.message ?: "GitHub 同步失败。"
+            }
+            isSyncing = false
+        }
     }
 
     val vaultPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -141,9 +175,14 @@ private fun ObsidianViewerApp(context: Context) {
                     debouncedQuery = debouncedQuery,
                     recentNotes = recentPaths.mapNotNull(index::findNote).take(3),
                     isRefreshing = isRefreshing,
+                    githubToken = githubToken,
+                    syncStatus = syncStatus,
+                    isSyncing = isSyncing,
                     onPickVault = { vaultPicker.launch(vaultUri) },
                     onRefresh = { refreshToken++ },
                     onSearchChange = { searchQuery = it },
+                    onGitHubTokenChange = { githubToken = it },
+                    onGitHubSync = ::syncFromGitHub,
                     onFolderOpen = { name -> folder = if (folder.isEmpty()) name else "$folder/$name" },
                     onFolderUp = { folder = folder.substringBeforeLast('/', "") },
                     onNoteOpen = { openNote(it, replaceHistory = true) },
@@ -162,9 +201,14 @@ private fun VaultBrowser(
     debouncedQuery: String,
     recentNotes: List<VaultNote>,
     isRefreshing: Boolean,
+    githubToken: String,
+    syncStatus: String,
+    isSyncing: Boolean,
     onPickVault: () -> Unit,
     onRefresh: () -> Unit,
     onSearchChange: (String) -> Unit,
+    onGitHubTokenChange: (String) -> Unit,
+    onGitHubSync: () -> Unit,
     onFolderOpen: (String) -> Unit,
     onFolderUp: () -> Unit,
     onNoteOpen: (VaultNote) -> Unit,
@@ -190,6 +234,41 @@ private fun VaultBrowser(
             if (vaultUri == null) {
                 Text("请选择手机上的 Obsidian Vault。", Modifier.padding(top = 24.dp))
                 return@Column
+            }
+            Text(
+                "GitHub 私有仓库同步",
+                modifier = Modifier.padding(top = 16.dp),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "MorganTian886/Obsidian · 只读拉取",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = githubToken,
+                onValueChange = onGitHubTokenChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                label = { Text("Fine-grained token") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+            )
+            Button(
+                onClick = onGitHubSync,
+                enabled = !isSyncing,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(if (isSyncing) "正在同步…" else "从 GitHub 同步")
+            }
+            if (syncStatus.isNotBlank()) {
+                Text(
+                    syncStatus,
+                    modifier = Modifier.padding(top = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             OutlinedTextField(
                 value = searchQuery,
@@ -361,6 +440,7 @@ private fun ObsidianViewerTheme(content: @Composable () -> Unit) {
 private const val PREFERENCES_NAME = "obsidian_viewer"
 private const val KEY_VAULT_URI = "vault_uri"
 private const val KEY_RECENT_PATHS = "recent_paths"
+private const val KEY_SYNC_STATUS = "sync_status"
 
 private fun loadVaultUri(context: Context): Uri? = context
     .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -380,4 +460,14 @@ private fun loadRecentPaths(context: Context): List<String> = context
 private fun saveRecentPaths(context: Context, paths: List<String>) {
     context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
         .edit().putString(KEY_RECENT_PATHS, paths.joinToString("\n")).apply()
+}
+
+private fun loadSyncStatus(context: Context): String = context
+    .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    .getString(KEY_SYNC_STATUS, "")
+    .orEmpty()
+
+private fun saveSyncStatus(context: Context, status: String) {
+    context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        .edit().putString(KEY_SYNC_STATUS, status).apply()
 }

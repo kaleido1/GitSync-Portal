@@ -117,7 +117,8 @@ app/src/main/java/com/morgan/obsidianviewer/
 - Markdown 解析、搜索和图片加载都在本地完成。
 - WebView 禁用了 JavaScript。
 - 外部链接交给系统浏览器处理。
-- 当前版本没有网络同步功能，也不会上传 Vault 内容。
+- GitHub token 使用 Android Keystore 加密后保存在设备上，不写入项目文件或日志。
+- GitHub 同步当前仅下载私有仓库，不会向仓库上传 Vault 内容。
 
 ## 开发路线
 
@@ -127,7 +128,7 @@ app/src/main/java/com/morgan/obsidianviewer/
 - [x] Wiki Link、图片、嵌入、Frontmatter 和 Callout
 - [x] 深色模式和最近打开
 - [ ] 使用真实 Vault 进行兼容性测试
-- [ ] GitHub Clone/Pull 与同步状态
+- [x] 私有 GitHub 仓库只读下载与同步状态
 - [ ] 后台自动同步
 - [ ] 阅读设置、主题和自定义 CSS
 - [ ] Mermaid、KaTeX 和代码语法高亮
