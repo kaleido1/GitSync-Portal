@@ -1,35 +1,32 @@
 # Changelog
 
-All notable changes to Obsidian Viewer are documented in this file.
+Obsidian Viewer 的重要变更记录在此文件中。
 
-## [0.3.0] - 2026-08-09
+## [1.2.2] - 2026-08-10
 
 ### Added
 
-- Private GitHub Vault synchronization with encrypted token storage.
-- Commit SHA checks and incremental file synchronization.
-- Startup/foreground automatic sync, Wi-Fi-only mode, progress, retry, and last-sync status.
-- Custom home note, favorites, reading history, in-page search, and reader menu.
-- Adjustable reader theme, font size, line height, margins, and Obsidian CSS snippets.
-- Offline Mermaid, KaTeX, and Highlight.js rendering.
-- Quizzable interactive quizzes with local progress and seven question types.
-- Safe Dataview query subset for `LIST`, `TABLE`, `TASK`, `FROM`, `WHERE`, and `SORT`.
-- Page table of contents and current-section highlighting.
-- Application icon and bilingual documentation.
+- Android、iOS、Windows、macOS 和 Linux 共用的 GitHub REST API 双向同步。
+- Fine-grained personal access token 与 Obsidian SecretStorage 集成。
+- Vault 隐藏文件同步，包括 `.obsidian/` 和 `.gitignore`。
+- 基于共同 commit 的三方差异判断、删除同步和冲突副本。
+- 启动时、保存后和定时同步选项。
+- 阅读工作台、全文搜索、收藏、阅读历史和当前笔记目录。
+- Quizzable 七种题型与持久化答题进度。
 
 ### Improved
 
-- Wiki links, heading anchors, percent-encoded links, images, embeds, and Callouts.
-- Obsidian emphasis compatibility, including emphasis inside quiz YAML.
-- Local and remote HTTPS image rendering.
-- WebView security with local resource routing and a restrictive Content Security Policy.
+- 修复移动端操作按钮中图标越界的问题。
+- 增加文件卡片高度与内部留白，改善移动端布局。
+- 防止同步过程覆盖或禁用 Obsidian Viewer 自身。
+- 将默认同步仓库设置为 `kaleido1/Class-Notes`。
 
 ### Security
 
-- GitHub tokens are encrypted using Android Keystore and are never stored in the repository.
-- Android application-data cloud backup is disabled.
-- DataviewJS and arbitrary note-provided JavaScript are not executed.
+- GitHub token 不写入 Vault、插件 `data.json` 或仓库。
+- `.git/` 和 `.trash/` 始终排除在同步范围之外。
+- 单文件大小超过配置上限时中止并显示错误，不静默跳过。
 
-## [0.2.0]
+## [1.0.0]
 
-- Initial local Vault browser and Markdown reader.
+- 首个原生 Obsidian 插件版本。

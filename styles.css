@@ -1,0 +1,467 @@
+.ov-reader-enabled .markdown-preview-view,
+.ov-reader-enabled .markdown-source-view.mod-cm6 .cm-scroller {
+  font-size: var(--ov-reader-font-size, 17px);
+  line-height: var(--ov-reader-line-height, 1.7);
+}
+
+.ov-reader-enabled .markdown-preview-sizer,
+.ov-reader-enabled .markdown-source-view.mod-cm6.is-readable-line-width .cm-sizer {
+  max-width: var(--ov-reader-width, 900px);
+}
+
+.ov-reader-enabled .markdown-preview-view p {
+  margin-block: var(--ov-reader-paragraph-spacing, 1em);
+}
+
+.ov-focus-reading .workspace-ribbon.mod-left,
+.ov-focus-reading .workspace-split.mod-left-split,
+.ov-focus-reading .workspace-split.mod-right-split,
+.ov-focus-reading .status-bar {
+  display: none;
+}
+
+.ov-dashboard {
+  padding: 14px 12px 32px;
+  overflow-y: auto;
+  container-type: inline-size;
+}
+
+.ov-dashboard-header,
+.ov-section-heading,
+.ov-file-row,
+.ov-inline-actions,
+.ov-quiz-nav,
+.ov-quiz-actions,
+.ov-quiz-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-dashboard-header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ov-dashboard-header h2,
+.ov-dashboard-header small,
+.ov-active-card strong,
+.ov-active-card > span {
+  display: block;
+  margin: 0;
+}
+
+.ov-muted,
+.ov-dashboard-header small,
+.ov-file-labels small,
+.ov-empty,
+.ov-search-status {
+  color: var(--text-muted);
+}
+
+.ov-path,
+.ov-file-labels small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-m);
+}
+
+.ov-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 4px 9px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.25;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.ov-tab > span:last-child {
+  display: block;
+  min-height: 1.25em;
+  line-height: 1.25;
+}
+
+.ov-tab.is-active {
+  background: var(--background-primary);
+  color: var(--text-accent);
+  box-shadow: var(--shadow-s);
+}
+
+.ov-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
+  max-width: 17px;
+  min-height: 17px;
+  max-height: 17px;
+  overflow: hidden;
+  flex: 0 0 17px;
+}
+
+.ov-tab-icon svg {
+  display: block;
+  width: 17px !important;
+  height: 17px !important;
+  min-width: 0 !important;
+  max-width: 17px !important;
+  min-height: 0 !important;
+  max-height: 17px !important;
+  flex: 0 0 17px;
+}
+
+.ov-dashboard .ov-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 7px;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex: 0 0 32px;
+  line-height: 0;
+}
+
+.ov-dashboard .ov-icon-button svg {
+  display: block;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 0 !important;
+  max-width: 18px !important;
+  min-height: 0 !important;
+  max-height: 18px !important;
+  flex: 0 0 18px;
+  pointer-events: none;
+}
+
+.ov-active-card,
+.ov-home-card,
+.ov-sync-card {
+  position: relative;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: var(--background-secondary-alt);
+}
+
+.ov-active-card {
+  padding-right: 72px;
+}
+
+.ov-active-card .ov-inline-actions {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+}
+
+.ov-home-card {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary)), var(--background-secondary));
+}
+
+.ov-sync-card {
+  background: var(--background-primary);
+}
+
+.ov-sync-card.is-error {
+  border-color: var(--color-red);
+}
+
+.ov-sync-card.is-complete {
+  border-color: var(--color-green);
+}
+
+.ov-sync-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ov-sync-card-header strong,
+.ov-sync-card-header small,
+.ov-sync-card > small {
+  display: block;
+}
+
+.ov-sync-card-header small {
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.ov-sync-message {
+  margin: 10px 0 6px;
+}
+
+.ov-sync-card progress {
+  width: 100%;
+  height: 7px;
+  margin-bottom: 6px;
+}
+
+.ov-setting-warning {
+  margin: 14px 0;
+  padding: 12px;
+  border-left: 4px solid var(--color-orange);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--color-orange) 10%, var(--background-primary));
+  color: var(--text-normal);
+}
+
+.ov-home-card h3 {
+  margin: 4px 0;
+}
+
+.ov-eyebrow {
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.ov-section-title,
+.ov-section-heading h3 {
+  margin: 20px 0 8px;
+  font-size: var(--font-ui-medium);
+}
+
+.ov-section-heading {
+  justify-content: space-between;
+}
+
+.ov-file-list {
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
+.ov-file-row + .ov-file-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.ov-file-open {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 9px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  text-align: left;
+}
+
+.ov-file-open:hover {
+  background: var(--background-modifier-hover);
+}
+
+.ov-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.ov-file-icon svg {
+  display: block;
+  width: 18px !important;
+  height: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+}
+
+.ov-file-labels {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.ov-file-labels strong,
+.ov-file-labels small {
+  display: block;
+}
+
+.ov-file-row > .clickable-icon {
+  margin-right: 6px;
+}
+
+.ov-empty,
+.ov-search-status {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+}
+
+.ov-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--input-radius);
+  background: var(--background-modifier-form-field);
+}
+
+.ov-search-box input {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.ov-outline {
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.ov-outline-item {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.ov-outline-item:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.ov-quiz-definition {
+  display: none;
+}
+
+.ov-quiz-card {
+  margin: 1.2em 0;
+  padding: 16px;
+  border: 2px solid var(--interactive-accent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-primary));
+}
+
+.ov-quiz-card h3 {
+  margin-top: 0;
+}
+
+.ov-quiz-description {
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.ov-quiz-question {
+  display: block;
+  padding: 14px 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.ov-quiz-question > strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.ov-quiz-option,
+.ov-quiz-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 5px;
+}
+
+.ov-quiz-match {
+  justify-content: space-between;
+}
+
+.ov-quiz-text-input {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.ov-quiz-order-row {
+  margin-top: 7px;
+}
+
+.ov-quiz-order-row span {
+  flex: 1;
+}
+
+.ov-quiz-nav,
+.ov-quiz-actions {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.ov-quiz-result {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  font-weight: var(--font-semibold);
+}
+
+.ov-quiz-feedback {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--radius-m);
+}
+
+.ov-quiz-feedback.is-correct {
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.ov-quiz-feedback.is-wrong,
+.ov-quiz-error {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 10%, transparent);
+}
+
+.ov-quiz-error {
+  margin: 1em 0;
+  padding: 12px;
+  border: 1px solid var(--color-red);
+  border-radius: var(--radius-m);
+}
+
+@container (max-width: 260px) {
+  .ov-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

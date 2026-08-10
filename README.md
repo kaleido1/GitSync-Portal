@@ -1,163 +1,88 @@
-# Obsidian Viewer for Android
+# Obsidian Viewer
 
-[中文](README.md) | [English](README_EN.md)
+Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
 
-一个面向 Android 的只读 Obsidian Vault 阅读器。项目使用 Kotlin、Jetpack Compose 和系统 Storage Access Framework（SAF），无需申请整个手机存储空间的访问权限。
+当前版本：`1.2.2`
 
-> 当前版本：`0.3.0`。项目仍处于早期开发阶段，请勿将它视为 Vault 的唯一副本。
+## 功能
 
-[下载最新 Android APK](https://github.com/MorganTian886/Obsidian_Viewer/releases/latest)
+- 首页、文件、收藏和阅读历史工作台
+- 文件名与 Markdown 正文全文搜索
+- 当前笔记目录与标题跳转
+- 字号、行距、正文宽度、段落间距和专注阅读模式
+- Quizzable 七种题型、评分、解析、重试和本地进度
+- Android、iOS、Windows、macOS 和 Linux 双向 GitHub 同步
+- 同步普通文件、`.obsidian/`、`.gitignore` 等 Vault 内隐藏文件
+- 三方差异判断、删除同步、冲突副本、启动同步、保存后同步和定时同步
+- GitHub token 通过 Obsidian `SecretStorage` 保存，不写入 Vault 或插件配置
+- 直接使用 Obsidian 的 Markdown、Wiki Link、嵌入、Properties、Callout、Mermaid、KaTeX、代码高亮、CSS snippets 和 Dataview 能力
 
-## 当前功能
+## 安装
 
-- 通过 Android 系统文件夹选择器连接本地 Vault
-- 永久保存用户授予的 Vault 读取权限
-- 按原始目录结构浏览文件夹和 Markdown 笔记
-- 显示笔记相对路径和最近打开记录
-- 搜索文件名与 Markdown 正文
-- 支持下拉刷新和按钮刷新
-- 跟随系统或手动选择深色/浅色主题
-- 可调字号、行距和页面边距
-- 自动生成本页目录，并高亮当前章节
-- 页内关键词查找、匹配计数和上一处/下一处
-- 收藏笔记、完整阅读历史与一键清空
-- 自定义首页及文件、收藏、历史、同步快捷入口
-- 同步阶段、写入文件数、最后同步时间、错误原因与重试
-- 支持笔记跳转历史和 Android 系统返回键
+### 手动安装
 
-### Markdown 与 Obsidian 语法
+1. 下载或构建 `manifest.json`、`main.js` 和 `styles.css`。
+2. 将三个文件放入：
 
-- CommonMark 基础语法
-- 标题、段落、粗体、斜体和删除线
-- 有序/无序列表、任务列表和引用
-- 行内代码、代码块和分隔线
-- GFM 表格与自动链接
-- 外部网页链接
-- `[[Wiki Link]]`
-- `[[笔记|显示别名]]`
-- `[[笔记#标题]]` 标题跳转
-- `![[图片.png]]` 和标准 Markdown 图片
-- `![[笔记]]` 笔记嵌入
-- YAML Frontmatter/Properties
-- Obsidian Callout（Note、Tip、Warning、Danger、Success 等）
-- Mermaid 11.16.1 图表（离线）
-- KaTeX 0.18.2 行内/块级数学公式（离线）
-- Highlight.js 11.11.1 代码语法高亮（离线）
-- `.obsidian/snippets/*.css` 自定义样式
-- Dataview 安全查询：`LIST`、`TABLE`、`TASK`、`FROM`、`WHERE`、`SORT`
-- Dataview Frontmatter 与 `Field:: Value` 行内字段
-- Quizzable 七种题型、评分、解析、重试和本地答题进度
+   ```text
+   <Vault>/.obsidian/plugins/obsidian-viewer/
+   ```
 
-## 技术栈
+3. 重新加载 Obsidian。
+4. 在“设置 → 第三方插件”中启用 **Obsidian Viewer**。
 
-- Kotlin
-- Jetpack Compose + Material 3
-- Android Storage Access Framework
-- AndroidX DocumentFile
-- CommonMark Java + GFM 扩展
-- WebView 本地 HTML 阅读视图
-- Gradle Kotlin DSL
+移动端和桌面端使用相同的插件目录结构。
 
-Markdown 和扩展语法都在设备本地解析。Vault 图片通过 WebView 从已授权的文档 URI 流式读取，避免将大图完整解码进 Compose 内存。Mermaid、KaTeX 和 Highlight.js 固定版本资源随 APK 打包，不依赖 CDN。
+## GitHub 同步
 
-## 环境要求
+1. 在 GitHub 创建只授权目标 Vault 仓库的 fine-grained personal access token。
+2. 将 Repository permissions 中的 `Contents` 设置为 `Read and write`。
+3. 在“Obsidian → 设置 → Obsidian Viewer”中填写 token、`owner/repository` 和分支。
+4. 先点击“测试连接”，再执行第一次“立即双向同步”。
+5. 验证无误后，再按需开启启动、保存后或定时同步。
 
-- Android Studio 2026.1 或兼容版本
-- JDK 17 或更高版本（推荐使用 Android Studio 内置 JDK）
-- Android SDK 37
-- Android SDK Build Tools 36.0.0
-- Android 8.0（API 26）或更高版本的设备
+同步器只会永久忽略 Vault 内的 `.git/` 数据库和 `.trash/` 回收站。本插件自己的 `data.json` 默认忽略，避免本机阅读历史、同步基线和设备设置互相覆盖。Token 位于 Obsidian SecretStorage，不属于 Vault 文件。
 
-项目当前使用：
+如果 Vault 同时安装了 Obsidian Git，请只启用一个插件的自动同步功能，避免两个同步器同时更新同一分支。
 
-- Android Gradle Plugin 9.3.0
-- Gradle 9.5.0
-- Kotlin/Compose Compiler 2.3.21
-- Compose BOM 2026.06.00
+## 开发与构建
 
-## 构建项目
-
-克隆仓库：
+需要 Node.js 18 或更高版本：
 
 ```bash
-git clone https://github.com/MorganTian886/Obsidian_Viewer.git
-cd Obsidian_Viewer
+npm install
+npm test
 ```
 
-Windows：
+`npm test` 会执行 TypeScript 检查、生成生产版 `main.js`，并运行 GitHub 同步核心测试。
 
-```powershell
-.\gradlew.bat assembleDebug
-```
-
-macOS/Linux：
+开发模式：
 
 ```bash
-./gradlew assembleDebug
+npm run dev
 ```
 
-生成的 APK 位于：
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-连接已启用 USB 调试的 Android 设备后，可以运行：
-
-```powershell
-.\gradlew.bat installDebug
-```
-
-也可以在 Android Studio 中打开项目，选择设备后点击 **Run**。
-
-## 使用方法
-
-1. 在手机上创建或复制一个 Obsidian Vault，例如 `Documents/Obsidian/MyVault`。
-2. 打开 App，点击 **选择 Vault**。
-3. 进入具体的 Vault 文件夹后点击 **使用此文件夹**。
-4. 从文件夹列表打开 Markdown 笔记。
-
-Android 不允许应用直接选择共享存储根目录，因此必须选择一个具体的子文件夹。
+详细的同步行为和 Quizzable 格式见 [OBSIDIAN_PLUGIN.md](OBSIDIAN_PLUGIN.md)。
 
 ## 项目结构
 
 ```text
-app/src/main/java/com/morgan/obsidianviewer/
-├── MainActivity.kt        # Compose UI、文件夹导航和 WebView 阅读器
-├── MarkdownRenderer.kt    # Markdown/Obsidian 语法预处理与 HTML 渲染
-├── ReaderPreferences.kt   # 阅读主题、字号、行距和边距设置
-└── VaultModels.kt         # Vault 索引、文件模型和全文搜索缓存
+main.ts                 插件入口、设置与生命周期
+src/viewer-view.ts      阅读工作台界面
+src/settings.ts         插件设置界面
+src/github-sync.ts      跨平台 GitHub 双向同步
+src/quiz.ts             Quizzable 解析与交互
+styles.css              桌面端和移动端样式
+scripts/test-sync.mjs   同步核心测试
 ```
 
 ## 隐私与安全
 
-- App 只访问用户通过系统文件选择器明确授权的 Vault。
-- Markdown 解析、搜索和图片加载都在本地完成。
-- WebView 仅为随 APK 打包的 Mermaid、KaTeX、代码高亮和目录功能启用 JavaScript。
-- 内容安全策略（CSP）禁止脚本联网、加载远程脚本、对象和内嵌页面。
-- 外部链接交给系统浏览器处理。
-- GitHub token 使用 Android Keystore 加密后保存在设备上，不写入项目文件或日志。
-- GitHub 同步当前仅下载私有仓库，不会向仓库上传 Vault 内容。
-
-## 开发路线
-
-- [x] 本地 Vault 选择与持久权限
-- [x] 文件夹导航与全文搜索
-- [x] CommonMark/GFM 阅读视图
-- [x] Wiki Link、图片、嵌入、Frontmatter 和 Callout
-- [x] 深色模式和最近打开
-- [ ] 使用真实 Vault 进行兼容性测试
-- [x] 私有 GitHub 仓库只读下载与同步状态
-- [x] 每次启动自动同步与仅 Wi-Fi 选项
-- [x] 收藏、阅读历史、首页快捷入口与页内查找
-- [x] 同步进度、失败原因与重试
-- [x] Dataview 常用查询语法兼容（不执行 DataviewJS）
-- [x] Quizzable 交互题目与本地进度
-- [ ] 后台自动同步
-- [x] 阅读设置、主题和自定义 CSS
-- [x] Mermaid、KaTeX 和代码语法高亮
-- [ ] Release APK 与自动化测试
+- 笔记阅读、搜索和测验在本地完成。
+- GitHub 同步仅在用户配置并触发后访问 GitHub API。
+- Token 不会写入 `data.json`、日志或同步仓库。
+- 同步前会检查文件大小和远端分支，冲突时保留带设备名与时间的副本。
 
 ## License
 
-尚未选择开源许可证。在添加许可证之前，保留所有权利。
+目前尚未选择开源许可证。在添加许可证前，保留所有权利。
