@@ -2,6 +2,15 @@
 
 Obsidian Viewer 的重要变更记录在此文件中。
 
+## [1.2.3] - 2026-08-11
+
+### Added
+
+- Android、iOS、Windows、macOS 和 Linux 共用的 BRAT 一键安装链接。
+- 自动构建、测试并发布 GitHub Release 的工作流。
+- 固定名称的 `obsidian-viewer.zip` 通用安装包。
+- 独立安装指南和各平台 URI 唤起说明。
+
 ## [1.2.2] - 2026-08-10
 
 ### Added

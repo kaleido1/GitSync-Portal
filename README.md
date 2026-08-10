@@ -2,7 +2,16 @@
 
 Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
 
-当前版本：`1.2.2`
+当前版本：`1.2.3`
+
+## 一键安装（全平台）
+
+支持 Android、iOS、Windows、macOS 和 Linux：
+
+1. [安装并启用 BRAT](https://obsidian.md/plugins?id=obsidian42-brat)（只需一次）。
+2. [一键安装 Obsidian Viewer](obsidian://brat?plugin=kaleido1/Obsidian_Viewer)。
+
+安装确认窗口打开后点击 **Add Plugin**。完整说明和通用 ZIP 备用下载见 [INSTALL.md](INSTALL.md)。
 
 ## 功能
 
@@ -21,7 +30,7 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 
 ### 手动安装
 
-1. 下载或构建 `manifest.json`、`main.js` 和 `styles.css`。
+1. 下载 [最新版通用安装包](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
 2. 将三个文件放入：
 
    ```text
