@@ -318,7 +318,7 @@ var ObsidianViewerSettingTab = class extends import_obsidian2.PluginSettingTab {
       this.plugin.settings.syncMaxFileSizeMb = Math.min(99, Math.max(1, parsed));
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("\u5FFD\u7565\u8DEF\u5F84").setDesc("\u6BCF\u884C\u4E00\u4E2A vault \u76F8\u5BF9\u8DEF\u5F84\u6216 glob\u3002\u9690\u85CF\u6587\u4EF6\u4F1A\u6B63\u5E38\u540C\u6B65\uFF1B\u4EC5 `.git/` \u548C `.trash/` \u59CB\u7EC8\u5FFD\u7565\u3002").addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u5FFD\u7565\u8DEF\u5F84").setDesc("\u6BCF\u884C\u4E00\u4E2A vault \u76F8\u5BF9\u8DEF\u5F84\u6216 glob\u3002\u7B14\u8BB0\u3001\u4E3B\u9898\u3001CSS \u548C\u6709\u610F\u4E49\u7684\u9690\u85CF\u914D\u7F6E\u4F1A\u6B63\u5E38\u540C\u6B65\uFF1B\u5DE5\u4F5C\u533A\u5E03\u5C40\u3001\u63D2\u4EF6\u542F\u7528\u5217\u8868\u548C\u540C\u6B65\u5668\u8FD0\u884C\u72B6\u6001\u9ED8\u8BA4\u6309\u8BBE\u5907\u4FDD\u7559\u3002\u4EC5 `.git/` \u548C `.trash/` \u59CB\u7EC8\u5FFD\u7565\u3002").addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
       this.plugin.settings.syncIgnorePatterns = value;
       await this.plugin.saveSettings();
     }));
@@ -965,6 +965,7 @@ var GitHubSyncService = class {
 `);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
+    if (this.isIgnored(path)) return null;
     return { path, sha: await gitBlobSha(data) };
   }
   isSelfCoreFile(path) {
@@ -1093,6 +1094,18 @@ function adapterPath(value) {
 // main.ts
 var GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
 var DEFAULT_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/community-plugins*.json",
+  ".obsidian/core-plugins*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/data.json",
+  ".obsidian/plugins/obsidian-git/data.json",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/"
+].join("\n");
+var PREVIOUS_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/plugins/obsidian-viewer/data.json",
   "node_modules/"
@@ -1236,7 +1249,7 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
       history: Array.isArray(loaded == null ? void 0 : loaded.history) ? loaded.history : [],
       quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {}
     };
-    if (this.settings.syncIgnorePatterns === LEGACY_SYNC_IGNORE_PATTERNS) {
+    if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       await this.saveData(this.settings);
     }

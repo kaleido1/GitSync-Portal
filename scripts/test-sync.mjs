@@ -92,12 +92,36 @@ const listings = {
     folders: ["/.git", "/.obsidian", "/.trash", "/folder"],
   },
   ".obsidian": {
-    files: [".obsidian/app.json"],
+    files: [
+      ".obsidian/app.json",
+      ".obsidian/community-plugins.json",
+      ".obsidian/core-plugins.json",
+      ".obsidian/page-preview.json",
+      ".obsidian/workspace.json",
+      ".obsidian/workspace-mobile.json",
+      ".obsidian/workspace-mobile.conflict-ios-20260810T160059Z.json",
+    ],
     folders: [".obsidian/plugins"],
   },
   ".obsidian/plugins": {
     files: [],
-    folders: [".obsidian/plugins/obsidian-viewer"],
+    folders: [".obsidian/plugins/example-plugin", ".obsidian/plugins/obsidian-git", ".obsidian/plugins/obsidian-viewer"],
+  },
+  ".obsidian/plugins/example-plugin": {
+    files: [
+      ".obsidian/plugins/example-plugin/main.js",
+      ".obsidian/plugins/example-plugin/manifest.conflict-ios-20260810T160059Z.json",
+      ".obsidian/plugins/example-plugin/manifest.json",
+    ],
+    folders: [],
+  },
+  ".obsidian/plugins/obsidian-git": {
+    files: [
+      ".obsidian/plugins/obsidian-git/data.json",
+      ".obsidian/plugins/obsidian-git/main.js",
+      ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+    ],
+    folders: [],
   },
   ".obsidian/plugins/obsidian-viewer": {
     files: [".obsidian/plugins/obsidian-viewer/main.js", ".obsidian/plugins/obsidian-viewer/data.json"],
@@ -119,19 +143,32 @@ const fakePlugin = {
     },
   } },
   manifest: { id: "obsidian-viewer" },
-  settings: { syncIgnorePatterns: ".DS_Store\n.obsidian/plugins/obsidian-viewer/data.json" },
+  settings: { syncIgnorePatterns: [
+    ".DS_Store",
+    ".obsidian/workspace*.json",
+    ".obsidian/community-plugins*.json",
+    ".obsidian/core-plugins*.json",
+    ".obsidian/page-preview.json",
+    ".obsidian/plugins/obsidian-viewer/data.json",
+    ".obsidian/plugins/obsidian-git/data.json",
+    ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+    ".obsidian/plugins/*/manifest.conflict-*",
+  ].join("\n") },
 };
 const service = new GitHubSyncService(fakePlugin, () => {});
 assert.deepEqual(await service.listAdapterFiles(), [
   ".gitignore",
   ".obsidian/app.json",
+  ".obsidian/plugins/example-plugin/main.js",
+  ".obsidian/plugins/example-plugin/manifest.json",
+  ".obsidian/plugins/obsidian-git/main.js",
   ".obsidian/plugins/obsidian-viewer/main.js",
   "folder/.hidden.md",
   "folder/visible.md",
   "note.md",
 ]);
 const protectedList = await service.ensureSelfEnabled();
-assert.equal(protectedList.path, ".obsidian/community-plugins.json");
+assert.equal(protectedList, null);
 assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "obsidian-viewer"]);
 assert.equal(service.isSelfCoreFile(".obsidian/community-plugins.json"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/obsidian-viewer/main.js"), true);

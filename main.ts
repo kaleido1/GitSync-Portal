@@ -12,6 +12,18 @@ import { GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
 const GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
 const DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/community-plugins*.json",
+  ".obsidian/core-plugins*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/data.json",
+  ".obsidian/plugins/obsidian-git/data.json",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/",
+].join("\n");
+const PREVIOUS_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
   ".obsidian/plugins/obsidian-viewer/data.json",
   "node_modules/",
 ].join("\n");
@@ -186,7 +198,7 @@ export default class ObsidianViewerPlugin extends Plugin {
       history: Array.isArray(loaded?.history) ? loaded.history : [],
       quizProgress: loaded?.quizProgress && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
     };
-    if (this.settings.syncIgnorePatterns === LEGACY_SYNC_IGNORE_PATTERNS) {
+    if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       await this.saveData(this.settings);
     }

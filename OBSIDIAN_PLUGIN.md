@@ -28,7 +28,7 @@ GitHub 同步本身需要连接 GitHub；其余阅读、搜索和答题功能不
 
 首次同步采用安全合并：两端独有文件都会保留；同一路径内容不同会把本地版本另存为带设备名和时间的 `.conflict-…` 副本，再采用远端版本作为主文件。之后同步使用上次 commit 作为共同基线，分别识别本地和远端修改。
 
-同步器通过跨平台 Vault Adapter 枚举文件，因此 `.gitignore`、`.obsidian/` 等隐藏内容也能参与三方同步。仅 `.git/` 内部数据库和 `.trash/` 回收站始终忽略；本插件自己的 `data.json` 默认忽略以避免同步过程修改自身基线，但可由用户调整。SecretStorage 中的 token 不属于 vault 文件，不会提交。单文件默认上限为 50 MB，超限时会明确停止同步，不会静默跳过。
+同步器通过跨平台 Vault Adapter 枚举文件，因此 `.gitignore`、主题、CSS、插件程序和其他有意义的 `.obsidian/` 隐藏内容仍会参与三方同步。工作区布局、最近文件、插件启用列表、本插件 `data.json` 与 Obsidian Git 运行状态默认按设备保留，避免 Android、iOS、Windows 和 macOS 每次打开 Vault 都制造伪变更。仅 `.git/` 内部数据库和 `.trash/` 回收站始终忽略；默认忽略项仍可由用户调整。SecretStorage 中的 token 不属于 vault 文件，不会提交。单文件默认上限为 50 MB，超限时会明确停止同步，不会静默跳过。
 
 > 如果 vault 同时安装了 Obsidian Git，请只保留一个自动同步器。两个插件同时自动更新同一分支会产生竞态。
 

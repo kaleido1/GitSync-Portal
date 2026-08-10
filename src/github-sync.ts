@@ -398,6 +398,7 @@ export class GitHubSyncService {
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}\n`);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     await this.plugin.app.vault.adapter.writeBinary(path, data);
+    if (this.isIgnored(path)) return null;
     return { path, sha: await gitBlobSha(data) };
   }
 
