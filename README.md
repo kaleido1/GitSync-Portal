@@ -2,16 +2,15 @@
 
 Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
 
-当前版本：`1.2.3`
+当前版本：`1.2.4`
 
-## 一键安装（全平台）
+## 下载 ZIP 安装（全平台）
 
-支持 Android、iOS、Windows、macOS 和 Linux：
+同一个安装包支持 Android、iOS、Windows、macOS 和 Linux：
 
-1. [安装并启用 BRAT](https://obsidian.md/plugins?id=obsidian42-brat)（只需一次）。
-2. [一键安装 Obsidian Viewer](obsidian://brat?plugin=kaleido1/Obsidian_Viewer)。
+[下载最新版 obsidian-viewer.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)
 
-安装确认窗口打开后点击 **Add Plugin**。完整说明和通用 ZIP 备用下载见 [INSTALL.md](INSTALL.md)。
+将 ZIP 解压到 `<Vault>/.obsidian/plugins/`。安装后应得到 `<Vault>/.obsidian/plugins/obsidian-viewer/`，其中直接包含 `main.js`、`manifest.json` 和 `styles.css`。重新加载 Obsidian，再到“设置 → 第三方插件”启用插件。各平台的具体位置和更新方法见 [INSTALL.md](INSTALL.md)。
 
 ## 功能
 
@@ -30,11 +29,11 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 
 ### 手动安装
 
-1. 下载 [最新版通用安装包](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
-2. 将三个文件放入：
+1. 下载 [最新版 ZIP](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
+2. 将 `obsidian-viewer` 文件夹放入：
 
    ```text
-   <Vault>/.obsidian/plugins/obsidian-viewer/
+   <Vault>/.obsidian/plugins/
    ```
 
 3. 重新加载 Obsidian。

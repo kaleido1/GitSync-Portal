@@ -1,44 +1,91 @@
-# 一键安装 Obsidian Viewer
+# 安装 Obsidian Viewer
 
-以下入口支持 Android、iOS、Windows、macOS 和 Linux。移动端与桌面端安装的是同一个插件版本。
+同一个 ZIP 安装包支持 Android、iOS、Windows、macOS 和 Linux。
 
-## 推荐：BRAT 一键安装
-
-第一次使用时，需要先安装一次官方社区插件 **Obsidian42 - BRAT**：
-
-[安装并启用 BRAT](https://obsidian.md/plugins?id=obsidian42-brat)
-
-BRAT 启用后，点击下面的按钮：
-
-[一键安装 Obsidian Viewer](obsidian://brat?plugin=kaleido1/Obsidian_Viewer)
-
-Obsidian 打开安装确认窗口后，点击 **Add Plugin**。安装完成后，在“设置 → 第三方插件”中启用 **Obsidian Viewer**。
-
-### 各平台
-
-| 平台 | 打开方式 |
-| --- | --- |
-| Android | 在浏览器中打开本页，点击“一键安装 Obsidian Viewer” |
-| iPhone / iPad | 在 Safari 中打开本页，点击安装按钮并允许打开 Obsidian |
-| Windows | 安装并至少启动过一次 Obsidian，然后点击安装按钮 |
-| macOS | 安装并至少启动过一次 Obsidian，然后点击安装按钮 |
-| Linux | 确保系统已注册 `obsidian://` URI，然后点击安装按钮 |
-
-## 下载通用安装包
-
-如果 URI 没有唤起 Obsidian，可下载固定名称的通用安装包：
+## 下载
 
 [下载最新版 obsidian-viewer.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)
 
-解压后，将包含 `main.js`、`manifest.json`、`styles.css` 的文件夹放到：
+ZIP 内已经包含完整的插件文件夹：
 
 ```text
-<Vault>/.obsidian/plugins/obsidian-viewer/
+obsidian-viewer/
+├── main.js
+├── manifest.json
+└── styles.css
 ```
 
-然后重新加载 Obsidian，并在“设置 → 第三方插件”中启用插件。
+## 安装位置
 
-## 安装后配置同步
+将 ZIP 解压到当前 Vault 的插件目录：
+
+```text
+<Vault>/.obsidian/plugins/
+```
+
+安装完成后的准确路径必须是：
+
+```text
+<Vault>/.obsidian/plugins/obsidian-viewer/main.js
+<Vault>/.obsidian/plugins/obsidian-viewer/manifest.json
+<Vault>/.obsidian/plugins/obsidian-viewer/styles.css
+```
+
+不要形成 `obsidian-viewer/obsidian-viewer/` 两层同名文件夹。
+
+解压后重新加载 Obsidian，然后进入“设置 → 第三方插件”并启用 **Obsidian Viewer**。
+
+## 各平台
+
+### Windows
+
+1. 打开 Vault 文件夹。
+2. 在资源管理器中开启“显示隐藏的项目”。
+3. 进入 `.obsidian/plugins/`；如果 `plugins` 不存在则创建它。
+4. 将 ZIP 解压到这里。
+5. 重新启动或重新加载 Obsidian，再启用插件。
+
+### macOS
+
+1. 在 Finder 中打开 Vault。
+2. 按 `Command + Shift + .` 显示隐藏文件。
+3. 进入 `.obsidian/plugins/`，将 ZIP 解压到这里。
+4. 重新启动或重新加载 Obsidian，再启用插件。
+
+### Android
+
+1. 在文件管理器中开启“显示隐藏文件”。
+2. 找到 Obsidian Vault，进入 `.obsidian/plugins/`。
+3. 将 ZIP 解压到这里。
+4. 完全关闭并重新打开 Obsidian，再启用插件。
+
+### iPhone / iPad
+
+iOS 的文件 App 不便直接操作以 `.` 开头的隐藏目录。推荐在共享同一个 Vault 的 Mac 或 Windows 设备上完成解压，再通过 iCloud 或当前文件同步方案把 `.obsidian/plugins/obsidian-viewer/` 同步到 iPhone/iPad。
+
+如果使用的 iOS 文件管理器能够显示 Vault 隐藏文件，也可以直接将 ZIP 解压到 `.obsidian/plugins/`。
+
+### Linux
+
+将 ZIP 解压到 Vault 的 `.obsidian/plugins/`：
+
+```bash
+unzip obsidian-viewer.zip -d "/path/to/Vault/.obsidian/plugins/"
+```
+
+## 更新插件
+
+新版 ZIP 不包含 `data.json`。更新时只覆盖下面三个程序文件，不要删除已有的 `data.json`：
+
+```text
+main.js
+manifest.json
+styles.css
+```
+
+这样可以保留同步仓库、设备名称、收藏、阅读历史和测验进度。更新后重新加载 Obsidian。
+
+## 配置 GitHub 同步
 
 1. 在 GitHub 创建仅授权知识库仓库的 fine-grained personal access token。
 2. 将 Repository permissions 中的 `Contents` 设置为 `Read and write`。
@@ -46,4 +93,4 @@ Obsidian 打开安装确认窗口后，点击 **Add Plugin**。安装完成后�
 4. 填写 token、`kaleido1/Class-Notes` 和 `main`。
 5. 点击“测试连接”，然后执行第一次双向同步。
 
-Token 保存在 Obsidian SecretStorage 中，不会写入 Vault 或 GitHub 仓库。
+Token 保存在 Obsidian SecretStorage 中，不会写入 ZIP、Vault 或 GitHub 仓库。

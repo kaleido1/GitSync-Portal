@@ -2,6 +2,15 @@
 
 Obsidian Viewer 的重要变更记录在此文件中。
 
+## [1.2.4] - 2026-08-11
+
+### Changed
+
+- 移除 BRAT 安装流程，以直接下载 ZIP 作为唯一推荐方式。
+- ZIP 现在包含顶层 `obsidian-viewer` 文件夹，可直接解压到 Vault 的 `.obsidian/plugins/`。
+- 增加 Windows、macOS、Android、iOS 和 Linux 的逐平台安装说明。
+- 安装包不包含 `data.json`，更新插件时保留用户设置与本地进度。
+
 ## [1.2.3] - 2026-08-11
 
 ### Added

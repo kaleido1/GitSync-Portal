@@ -30,8 +30,18 @@ jobs:
       - name: Verify release version
         run: node scripts/check-release.mjs "${{ github.ref_name }}"
 
-      - name: Package universal installer
-        run: zip -j obsidian-viewer.zip main.js manifest.json styles.css
+      - name: Package plugin folder
+        run: |
+          mkdir -p release/obsidian-viewer
+          cp main.js manifest.json styles.css release/obsidian-viewer/
+          cd release
+          zip -r ../obsidian-viewer.zip obsidian-viewer
+
+      - name: Verify ZIP layout
+        run: |
+          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/main.js"
+          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/manifest.json"
+          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/styles.css"
 
       - name: Publish GitHub release
         env:
