@@ -2,7 +2,7 @@
 
 Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
 
-当前版本：`1.2.5`
+当前版本：`1.2.6`
 
 ## 下载 ZIP 安装（全平台）
 
@@ -20,6 +20,7 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 - 字号、行距、正文宽度、段落间距和专注阅读模式
 - Quizzable 七种题型、评分、解析、重试和本地进度
 - Android、iOS、Windows、macOS 和 Linux 双向 GitHub 同步
+- 自动识别当前平台并标记同步提交，也可为同平台多台设备设置自定义名称
 - 同步普通文件、`.obsidian/`、`.gitignore` 等 Vault 内隐藏文件
 - 自动排除不同设备会持续改写的工作区、插件启用列表和同步器运行状态，避免跨平台伪变更
 - 三方差异判断、删除同步、冲突副本、启动同步、保存后同步和定时同步

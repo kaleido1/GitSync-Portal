@@ -59,9 +59,24 @@ export class ObsidianViewerSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName("自动识别设备")
+      .setDesc(`当前设备：${this.plugin.getCurrentDeviceName()}。开启后会在每个平台自动使用正确的系统名称。`)
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.syncDeviceNameAuto)
+        .onChange(async (value) => {
+          this.plugin.settings.syncDeviceNameAuto = value;
+          if (value) this.plugin.settings.syncDeviceName = this.plugin.getCurrentDeviceName();
+          await this.plugin.saveSettings();
+          this.display();
+        }));
+
+    new Setting(containerEl)
       .setName("设备名称")
-      .setDesc("用于 commit message 和冲突副本文件名。")
+      .setDesc(this.plugin.settings.syncDeviceNameAuto
+        ? "已由当前平台自动填写；关闭上方开关后可自定义。"
+        : "用于 commit message 和冲突副本文件名。")
       .addText((text) => text
+        .setDisabled(this.plugin.settings.syncDeviceNameAuto)
         .setValue(this.plugin.settings.syncDeviceName)
         .onChange(async (value) => {
           this.plugin.settings.syncDeviceName = value.trim();

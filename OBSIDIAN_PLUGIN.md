@@ -12,6 +12,7 @@
 - 专注阅读模式
 - Quizzable 七种题型、评分、解析、重试和本地进度
 - Android、iOS、Windows、macOS、Linux 共用的 GitHub 双向同步
+- 自动识别当前设备平台，也支持关闭自动识别后填写自定义设备名称
 - fine-grained token 使用 Obsidian SecretStorage 保存，不写入插件配置文件
 - 本地与远端三方差异判断、删除同步、冲突副本和自动同步
 - 桌面与移动端兼容；阅读、搜索和答题可离线使用

@@ -275,7 +275,13 @@ var ObsidianViewerSettingTab = class extends import_obsidian2.PluginSettingTab {
       this.plugin.settings.syncBranch = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("\u8BBE\u5907\u540D\u79F0").setDesc("\u7528\u4E8E commit message \u548C\u51B2\u7A81\u526F\u672C\u6587\u4EF6\u540D\u3002").addText((text) => text.setValue(this.plugin.settings.syncDeviceName).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u81EA\u52A8\u8BC6\u522B\u8BBE\u5907").setDesc(`\u5F53\u524D\u8BBE\u5907\uFF1A${this.plugin.getCurrentDeviceName()}\u3002\u5F00\u542F\u540E\u4F1A\u5728\u6BCF\u4E2A\u5E73\u53F0\u81EA\u52A8\u4F7F\u7528\u6B63\u786E\u7684\u7CFB\u7EDF\u540D\u79F0\u3002`).addToggle((toggle) => toggle.setValue(this.plugin.settings.syncDeviceNameAuto).onChange(async (value) => {
+      this.plugin.settings.syncDeviceNameAuto = value;
+      if (value) this.plugin.settings.syncDeviceName = this.plugin.getCurrentDeviceName();
+      await this.plugin.saveSettings();
+      this.display();
+    }));
+    new import_obsidian2.Setting(containerEl).setName("\u8BBE\u5907\u540D\u79F0").setDesc(this.plugin.settings.syncDeviceNameAuto ? "\u5DF2\u7531\u5F53\u524D\u5E73\u53F0\u81EA\u52A8\u586B\u5199\uFF1B\u5173\u95ED\u4E0A\u65B9\u5F00\u5173\u540E\u53EF\u81EA\u5B9A\u4E49\u3002" : "\u7528\u4E8E commit message \u548C\u51B2\u7A81\u526F\u672C\u6587\u4EF6\u540D\u3002").addText((text) => text.setDisabled(this.plugin.settings.syncDeviceNameAuto).setValue(this.plugin.settings.syncDeviceName).onChange(async (value) => {
       this.plugin.settings.syncDeviceName = value.trim();
       await this.plugin.saveSettings();
     }));
@@ -1130,6 +1136,7 @@ var DEFAULT_SETTINGS = {
   quizProgress: {},
   syncRepository: "kaleido1/Class-Notes",
   syncBranch: "main",
+  syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
   syncIgnorePatterns: DEFAULT_SYNC_IGNORE_PATTERNS,
   syncMaxFileSizeMb: 50,
@@ -1241,18 +1248,25 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     if (this.periodicSyncTimer !== null) window.clearInterval(this.periodicSyncTimer);
   }
   async loadSettings() {
+    var _a, _b;
     const loaded = await this.loadData();
+    const loadedDeviceName = (_b = (_a = loaded == null ? void 0 : loaded.syncDeviceName) == null ? void 0 : _a.trim()) != null ? _b : "";
+    const syncDeviceNameAuto = typeof (loaded == null ? void 0 : loaded.syncDeviceNameAuto) === "boolean" ? loaded.syncDeviceNameAuto : !loadedDeviceName || AUTO_GENERATED_DEVICE_NAMES.has(loadedDeviceName);
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...loaded != null ? loaded : {},
+      syncDeviceNameAuto,
+      syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       favorites: Array.isArray(loaded == null ? void 0 : loaded.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded == null ? void 0 : loaded.history) ? loaded.history : [],
       quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {}
     };
+    let migrated = (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
     if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
-      await this.saveData(this.settings);
+      migrated = true;
     }
+    if (migrated) await this.saveData(this.settings);
     this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary };
   }
   async saveSettings() {
@@ -1267,6 +1281,9 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
   }
   setGitHubToken(token) {
     this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, token.trim());
+  }
+  getCurrentDeviceName() {
+    return defaultDeviceName();
   }
   async testGitHubConnection() {
     const result = await this.githubSync.testConnection();
@@ -1421,3 +1438,4 @@ function defaultDeviceName() {
   if (import_obsidian5.Platform.isLinux) return "Linux";
   return "Obsidian";
 }
+var AUTO_GENERATED_DEVICE_NAMES = /* @__PURE__ */ new Set(["Android", "iOS", "Windows", "macOS", "Linux", "Obsidian"]);

@@ -48,6 +48,7 @@ export interface ViewerSettings {
   quizProgress: Record<string, QuizProgress>;
   syncRepository: string;
   syncBranch: string;
+  syncDeviceNameAuto: boolean;
   syncDeviceName: string;
   syncIgnorePatterns: string;
   syncMaxFileSizeMb: number;
@@ -73,6 +74,7 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   quizProgress: {},
   syncRepository: "kaleido1/Class-Notes",
   syncBranch: "main",
+  syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
   syncIgnorePatterns: DEFAULT_SYNC_IGNORE_PATTERNS,
   syncMaxFileSizeMb: 50,
@@ -191,17 +193,26 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const loaded = (await this.loadData()) as Partial<ViewerSettings> | null;
+    const loadedDeviceName = loaded?.syncDeviceName?.trim() ?? "";
+    const syncDeviceNameAuto = typeof loaded?.syncDeviceNameAuto === "boolean"
+      ? loaded.syncDeviceNameAuto
+      : !loadedDeviceName || AUTO_GENERATED_DEVICE_NAMES.has(loadedDeviceName);
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...(loaded ?? {}),
+      syncDeviceNameAuto,
+      syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       favorites: Array.isArray(loaded?.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded?.history) ? loaded.history : [],
       quizProgress: loaded?.quizProgress && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
     };
+    let migrated = loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
+      || loaded?.syncDeviceName !== this.settings.syncDeviceName;
     if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
-      await this.saveData(this.settings);
+      migrated = true;
     }
+    if (migrated) await this.saveData(this.settings);
     this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary };
   }
 
@@ -218,6 +229,10 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   setGitHubToken(token: string): void {
     this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, token.trim());
+  }
+
+  getCurrentDeviceName(): string {
+    return defaultDeviceName();
   }
 
   async testGitHubConnection(): Promise<string> {
@@ -401,3 +416,5 @@ function defaultDeviceName(): string {
   if (Platform.isLinux) return "Linux";
   return "Obsidian";
 }
+
+const AUTO_GENERATED_DEVICE_NAMES = new Set(["Android", "iOS", "Windows", "macOS", "Linux", "Obsidian"]);
