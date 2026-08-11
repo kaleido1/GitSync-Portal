@@ -4,7 +4,7 @@
 
 A read-only Obsidian Vault viewer for Android, built with Kotlin, Jetpack Compose, and Android's Storage Access Framework (SAF). It accesses only the Vault folder selected by the user and does not require broad storage permission.
 
-> Current version: `0.3.0`. This project is still in early development and should not be treated as the only copy of a Vault.
+> Current version: `0.4.0`. This project is still in early development and should not be treated as the only copy of a Vault.
 
 [Download the latest Android APK](https://github.com/MorganTian886/Obsidian_Viewer/releases/latest)
 

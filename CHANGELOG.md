@@ -2,7 +2,7 @@
 
 All notable changes to Obsidian Viewer are documented in this file.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-12
 
 ### Added
 
