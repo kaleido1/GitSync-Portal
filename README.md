@@ -51,7 +51,7 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 4. 先点击“测试连接”，再执行第一次“立即双向同步”。
 5. 验证无误后，再按需开启启动、保存后或定时同步。
 
-同步器只会永久忽略 Vault 内的 `.git/` 数据库和 `.trash/` 回收站。本插件自己的 `data.json` 默认忽略，避免本机阅读历史、同步基线和设备设置互相覆盖。Token 位于 Obsidian SecretStorage，不属于 Vault 文件。
+同步器会同步 Vault 内的笔记、主题、CSS、社区插件、核心插件启用列表、插件程序文件和插件 `data.json` 设置文件。它只会永久忽略 Vault 内的 `.git/` 数据库和 `.trash/` 回收站；默认额外忽略工作区布局、Viewer 本机同步状态和 Obsidian Git 临时脚本。Token 位于 Obsidian SecretStorage，不属于 Vault 文件。
 
 如果 Vault 同时安装了 Obsidian Git，请只启用一个插件的自动同步功能，避免两个同步器同时更新同一分支。
 

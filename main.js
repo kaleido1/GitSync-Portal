@@ -35,6 +35,9 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     this.searchQuery = "";
     this.searchSequence = 0;
     this.searchTimer = null;
+    this.currentFolderPath = "";
+    this.folderBackStack = [];
+    this.folderForwardStack = [];
   }
   getViewType() {
     return VIEW_TYPE_VIEWER;
@@ -67,7 +70,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     this.renderActiveNote(root);
     if (this.activeTab === "home") await this.renderHome(root);
     if (this.activeTab === "files") await this.renderFiles(root);
-    if (this.activeTab === "favorites") this.renderTrackedFiles(root, "\u6536\u85CF\u7B14\u8BB0", this.plugin.settings.favorites, "\u8FD8\u6CA1\u6709\u6536\u85CF\u7B14\u8BB0\u3002", true);
+    if (this.activeTab === "favorites") this.renderTrackedItems(root, "\u6536\u85CF", this.plugin.settings.favorites, "\u8FD8\u6CA1\u6709\u6536\u85CF\u3002", true);
     if (this.activeTab === "history") this.renderHistory(root);
   }
   renderTabs(root) {
@@ -118,7 +121,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     openHome.disabled = !home;
     openHome.addEventListener("click", () => void this.plugin.openHomeNote());
     this.renderSyncCard(root);
-    const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getMarkdownFile(path)).filter((file) => file !== null).slice(0, 5);
+    const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getFileOrFolder(path)).filter((item) => item !== null).slice(0, 5);
     this.renderSection(root, "\u6536\u85CF", favorites, "\u8FD8\u6CA1\u6709\u6536\u85CF\u7B14\u8BB0\u3002", true);
     const recent = this.plugin.settings.history.map((path) => this.plugin.getMarkdownFile(path)).filter((file) => file !== null).slice(0, 8);
     this.renderSection(root, "\u6700\u8FD1\u9605\u8BFB", recent, "\u6253\u5F00\u8FC7\u7684\u7B14\u8BB0\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002", false);
@@ -151,7 +154,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async renderFiles(root) {
-    const searchBox = root.createDiv({ cls: "ov-search-box" });
+    const searchBox = root.createDiv({ cls: "ov-search-box", attr: { tabindex: "0", role: "search" } });
     (0, import_obsidian.setIcon)(searchBox.createSpan(), "search");
     const input = searchBox.createEl("input", {
       type: "search",
@@ -159,6 +162,8 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
       value: this.searchQuery,
       attr: { "aria-label": "\u641C\u7D22\u6587\u4EF6\u540D\u548C\u6B63\u6587" }
     });
+    searchBox.addEventListener("click", () => input.focus());
+    searchBox.addEventListener("focus", () => input.focus());
     input.addEventListener("input", () => {
       this.searchQuery = input.value;
       if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
@@ -171,10 +176,68 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
       files = await this.plugin.searchFiles(this.searchQuery);
       if (sequence !== this.searchSequence) return;
       status.remove();
+      this.renderSection(root, `\u641C\u7D22\u7ED3\u679C\uFF08${files.length}\uFF09`, files, "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0\u3002", true);
     } else {
-      files = this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path)).slice(0, 300);
+      this.renderDirectory(root);
     }
-    this.renderSection(root, this.searchQuery.trim() ? `\u641C\u7D22\u7ED3\u679C\uFF08${files.length}\uFF09` : `\u5168\u90E8\u7B14\u8BB0\uFF08\u663E\u793A ${files.length}\uFF09`, files, "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0\u3002", true);
+  }
+  renderDirectory(root) {
+    const folder = this.getCurrentFolder();
+    const controls = root.createDiv({ cls: "ov-directory-controls" });
+    this.iconButton(controls, "arrow-left", "\u540E\u9000", () => this.navigateHistory(-1)).disabled = this.folderBackStack.length === 0;
+    this.iconButton(controls, "arrow-right", "\u524D\u8FDB", () => this.navigateHistory(1)).disabled = this.folderForwardStack.length === 0;
+    this.iconButton(controls, "arrow-up", "\u4E0A\u4E00\u7EA7", () => this.openParentFolder()).disabled = !this.currentFolderPath;
+    const location = controls.createDiv({ cls: "ov-directory-location" });
+    (0, import_obsidian.setIcon)(location.createSpan(), "folder-open");
+    location.createSpan({ text: this.currentFolderPath || "Vault \u6839\u76EE\u5F55" });
+    this.renderBreadcrumbs(root);
+    const children = [...folder.children].sort(compareVaultItems);
+    this.renderDirectoryList(root, children);
+  }
+  renderBreadcrumbs(root) {
+    const crumbs = root.createDiv({ cls: "ov-breadcrumbs" });
+    const rootButton = crumbs.createEl("button", { text: "\u6839\u76EE\u5F55" });
+    rootButton.addEventListener("click", () => this.openFolder("", true));
+    if (!this.currentFolderPath) return;
+    let path = "";
+    for (const segment of this.currentFolderPath.split("/")) {
+      crumbs.createSpan({ text: "/" });
+      path = path ? `${path}/${segment}` : segment;
+      const button = crumbs.createEl("button", { text: segment });
+      const target = path;
+      button.addEventListener("click", () => this.openFolder(target, true));
+    }
+  }
+  renderDirectoryList(root, children) {
+    root.createEl("h3", { text: `${this.currentFolderPath || "\u6839\u76EE\u5F55"}\uFF08${children.length}\uFF09`, cls: "ov-section-title" });
+    const list = root.createDiv({ cls: "ov-file-list" });
+    if (!children.length) {
+      list.createEl("p", { text: "\u5F53\u524D\u76EE\u5F55\u4E3A\u7A7A\u3002", cls: "ov-empty" });
+      return;
+    }
+    children.forEach((child) => {
+      const row = list.createDiv({ cls: "ov-file-row" });
+      const open = row.createEl("button", { cls: "ov-file-open" });
+      if (child instanceof import_obsidian.TFolder) {
+        (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), "folder");
+        const labels = open.createSpan({ cls: "ov-file-labels" });
+        labels.createEl("strong", { text: child.name || "\u6839\u76EE\u5F55" });
+        labels.createEl("small", { text: `${child.children.length} \u9879 \xB7 ${child.path || "Vault \u6839\u76EE\u5F55"}` });
+        open.addEventListener("click", () => this.openFolder(child.path, true));
+        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "\u53D6\u6D88\u6536\u85CF" : "\u6536\u85CF", () => void this.plugin.toggleFavorite(child));
+        return;
+      }
+      if (child instanceof import_obsidian.TFile) {
+        (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), child.extension === "md" ? "file-text" : "file");
+        const labels = open.createSpan({ cls: "ov-file-labels" });
+        labels.createEl("strong", { text: child.basename });
+        labels.createEl("small", { text: child.path });
+        open.addEventListener("click", () => void this.plugin.openFile(child));
+        if (child.extension === "md") {
+          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "\u53D6\u6D88\u6536\u85CF" : "\u6536\u85CF", () => void this.plugin.toggleFavorite(child));
+        }
+      }
+    });
   }
   renderHistory(root) {
     const heading = root.createDiv({ cls: "ov-section-heading" });
@@ -182,12 +245,12 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     const clear = heading.createEl("button", { text: "\u6E05\u7A7A", cls: "mod-warning" });
     clear.disabled = this.plugin.settings.history.length === 0;
     clear.addEventListener("click", () => void this.plugin.clearHistory());
-    this.renderTrackedFiles(root, "", this.plugin.settings.history, "\u6682\u65E0\u9605\u8BFB\u5386\u53F2\u3002", false, false);
+    this.renderTrackedItems(root, "", this.plugin.settings.history, "\u6682\u65E0\u9605\u8BFB\u5386\u53F2\u3002", false, false);
   }
-  renderTrackedFiles(root, title, paths, emptyText, showFavorite, showHeading = true) {
-    const files = paths.map((path) => this.plugin.getMarkdownFile(path)).filter((file) => file !== null);
-    if (showHeading && title) root.createEl("h3", { text: `${title}\uFF08${files.length}\uFF09`, cls: "ov-section-title" });
-    this.renderFileList(root, files, emptyText, showFavorite);
+  renderTrackedItems(root, title, paths, emptyText, showFavorite, showHeading = true) {
+    const items = paths.map((path) => showFavorite ? this.plugin.getFileOrFolder(path) : this.plugin.getMarkdownFile(path)).filter((item) => item !== null);
+    if (showHeading && title) root.createEl("h3", { text: `${title}\uFF08${items.length}\uFF09`, cls: "ov-section-title" });
+    this.renderFileList(root, items, emptyText, showFavorite);
   }
   renderSection(root, title, files, emptyText, showFavorite) {
     root.createEl("h3", { text: title, cls: "ov-section-title" });
@@ -202,11 +265,19 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     files.forEach((file) => {
       const row = list.createDiv({ cls: "ov-file-row" });
       const open = row.createEl("button", { cls: "ov-file-open" });
-      (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), "file-text");
+      (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), file instanceof import_obsidian.TFolder ? "folder" : "file-text");
       const labels = open.createSpan({ cls: "ov-file-labels" });
-      labels.createEl("strong", { text: file.basename });
-      labels.createEl("small", { text: file.path });
-      open.addEventListener("click", () => void this.plugin.openFile(file));
+      labels.createEl("strong", { text: file instanceof import_obsidian.TFolder ? file.name || "\u6839\u76EE\u5F55" : file.basename });
+      labels.createEl("small", { text: file instanceof import_obsidian.TFolder ? `${file.children.length} \u9879 \xB7 ${file.path || "Vault \u6839\u76EE\u5F55"}` : file.path });
+      open.addEventListener("click", () => {
+        if (file instanceof import_obsidian.TFolder) {
+          this.activeTab = "files";
+          this.searchQuery = "";
+          this.openFolder(file.path, true);
+        } else {
+          void this.plugin.openFile(file);
+        }
+      });
       if (showFavorite) {
         this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.isFavorite(file.path) ? "\u53D6\u6D88\u6536\u85CF" : "\u6536\u85CF", () => void this.plugin.toggleFavorite(file));
       }
@@ -235,7 +306,43 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     button.addEventListener("click", action);
     return button;
   }
+  getCurrentFolder() {
+    if (!this.currentFolderPath) return this.app.vault.getRoot();
+    const folder = this.app.vault.getAbstractFileByPath(this.currentFolderPath);
+    if (folder instanceof import_obsidian.TFolder) return folder;
+    this.currentFolderPath = "";
+    return this.app.vault.getRoot();
+  }
+  openFolder(path, trackHistory) {
+    if (path === this.currentFolderPath) return;
+    if (trackHistory) {
+      this.folderBackStack.push(this.currentFolderPath);
+      this.folderForwardStack = [];
+    }
+    this.currentFolderPath = path;
+    void this.render();
+  }
+  openParentFolder() {
+    if (!this.currentFolderPath) return;
+    const parent = this.currentFolderPath.includes("/") ? this.currentFolderPath.slice(0, this.currentFolderPath.lastIndexOf("/")) : "";
+    this.openFolder(parent, true);
+  }
+  navigateHistory(direction) {
+    const from = direction < 0 ? this.folderBackStack : this.folderForwardStack;
+    const to = direction < 0 ? this.folderForwardStack : this.folderBackStack;
+    const next = from.pop();
+    if (next === void 0) return;
+    to.push(this.currentFolderPath);
+    this.currentFolderPath = next;
+    void this.render();
+  }
 };
+function compareVaultItems(a, b) {
+  const aFolder = a instanceof import_obsidian.TFolder;
+  const bFolder = b instanceof import_obsidian.TFolder;
+  if (aFolder !== bFolder) return aFolder ? -1 : 1;
+  return a.name.localeCompare(b.name);
+}
 
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
@@ -324,7 +431,7 @@ var ObsidianViewerSettingTab = class extends import_obsidian2.PluginSettingTab {
       this.plugin.settings.syncMaxFileSizeMb = Math.min(99, Math.max(1, parsed));
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(containerEl).setName("\u5FFD\u7565\u8DEF\u5F84").setDesc("\u6BCF\u884C\u4E00\u4E2A vault \u76F8\u5BF9\u8DEF\u5F84\u6216 glob\u3002\u7B14\u8BB0\u3001\u4E3B\u9898\u3001CSS \u548C\u6709\u610F\u4E49\u7684\u9690\u85CF\u914D\u7F6E\u4F1A\u6B63\u5E38\u540C\u6B65\uFF1B\u5DE5\u4F5C\u533A\u5E03\u5C40\u3001\u63D2\u4EF6\u542F\u7528\u5217\u8868\u548C\u540C\u6B65\u5668\u8FD0\u884C\u72B6\u6001\u9ED8\u8BA4\u6309\u8BBE\u5907\u4FDD\u7559\u3002\u4EC5 `.git/` \u548C `.trash/` \u59CB\u7EC8\u5FFD\u7565\u3002").addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u5FFD\u7565\u8DEF\u5F84").setDesc("\u6BCF\u884C\u4E00\u4E2A vault \u76F8\u5BF9\u8DEF\u5F84\u6216 glob\u3002\u7B14\u8BB0\u3001\u4E3B\u9898\u3001CSS\u3001\u63D2\u4EF6\u672C\u4F53\u3001\u63D2\u4EF6\u542F\u7528\u5217\u8868\u548C\u63D2\u4EF6\u8BBE\u7F6E\u4F1A\u6B63\u5E38\u540C\u6B65\uFF1B\u5DE5\u4F5C\u533A\u5E03\u5C40\u3001\u56DE\u6536\u7AD9\u3001Git \u5185\u90E8\u5E93\u548C\u540C\u6B65\u5668\u8FD0\u884C\u72B6\u6001\u6309\u8BBE\u5907\u4FDD\u7559\u3002").addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
       this.plugin.settings.syncIgnorePatterns = value;
       await this.plugin.saveSettings();
     }));
@@ -695,6 +802,8 @@ var import_obsidian4 = require("obsidian");
 var API_ROOT = "https://api.github.com";
 var API_VERSION = "2026-03-10";
 var HARD_EXCLUDES = [".git/", ".trash/"];
+var MAX_SYNC_ATTEMPTS = 5;
+var MAX_REF_UPDATE_ATTEMPTS = 8;
 var GitHubSyncService = class {
   constructor(plugin, onStatus) {
     this.plugin = plugin;
@@ -712,7 +821,6 @@ var GitHubSyncService = class {
     return { repository: repository.full_name, branch, commitSha: head.commitSha };
   }
   async sync() {
-    var _a;
     if (this.running) throw new Error("\u540C\u6B65\u5DF2\u7ECF\u5728\u8FDB\u884C\u4E2D\u3002");
     this.running = true;
     try {
@@ -720,110 +828,169 @@ var GitHubSyncService = class {
       this.update("connecting", "\u6B63\u5728\u8FDE\u63A5 GitHub\u2026");
       const repository = await this.getRepository(token);
       const branch = this.plugin.settings.syncBranch.trim() || repository.default_branch;
-      const remote = await this.getHead(token, branch);
-      const base = this.plugin.settings.lastSyncedCommit ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit) : null;
-      this.update("scanning", "\u6B63\u5728\u8BA1\u7B97\u672C\u5730\u6587\u4EF6\u6307\u7EB9\u2026");
-      const local = await this.getLocalSnapshot();
-      const plan = createReconcilePlan(local, remote.files, (_a = base == null ? void 0 : base.files) != null ? _a : null);
-      this.update("reconciling", "\u6B63\u5728\u5408\u5E76\u672C\u5730\u4E0E\u8FDC\u7AEF\u53D8\u66F4\u2026");
-      let pulled = 0;
-      let deleted = 0;
-      let conflicts = 0;
-      const upload = new Map(plan.upload);
-      const protectedConflicts = /* @__PURE__ */ new Set();
-      for (const conflict of plan.conflicts) {
-        if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
-          upload.set(conflict.path, conflict.local);
-          protectedConflicts.add(conflict.path);
-          continue;
-        }
-        const preserved = await this.createConflictCopy(conflict.local);
-        upload.set(preserved.path, preserved);
-        conflicts++;
-      }
-      const pullOperations = [
-        ...plan.conflicts.filter(({ path }) => !protectedConflicts.has(path)).map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
-        ...plan.pull.filter(({ path, remote: remoteFile }) => {
-          if (remoteFile || !this.isSelfCoreFile(path)) return true;
-          const localFile = local.get(path);
-          if (localFile) upload.set(path, localFile);
-          return false;
-        })
-      ];
-      for (let index = 0; index < pullOperations.length; index++) {
-        const operation = pullOperations[index];
-        this.update("pulling", `\u6B63\u5728\u5E94\u7528\u8FDC\u7AEF\u53D8\u66F4\uFF1A${operation.path}`, index + 1, pullOperations.length);
-        if (operation.remote) {
-          await this.writeRemoteFile(token, operation.remote);
-          pulled++;
-        } else {
-          const existing = this.plugin.app.vault.getFileByPath(operation.path);
-          if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
-            if (existing) await this.plugin.app.vault.trash(existing, false);
-            else await this.plugin.app.vault.adapter.trashLocal(operation.path);
-            deleted++;
+      let latestRemoteChange = null;
+      for (let attempt = 1; attempt <= MAX_SYNC_ATTEMPTS; attempt++) {
+        try {
+          if (attempt > 1) {
+            await sleep(600 * attempt);
+            this.update("connecting", `\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u91CD\u65B0\u540C\u6B65\uFF08\u7B2C ${attempt} \u6B21\uFF09\u2026`);
           }
-        }
-      }
-      const enabledList = await this.ensureSelfEnabled();
-      if (enabledList) upload.set(enabledList.path, enabledList);
-      let commitSha = remote.commitSha;
-      let pushed = 0;
-      if (upload.size) {
-        const entries = [];
-        let index = 0;
-        for (const [path, localFile] of upload) {
-          index++;
-          this.update("pushing", `\u6B63\u5728\u4E0A\u4F20\u672C\u5730\u53D8\u66F4\uFF1A${path}`, index, upload.size);
-          if (!localFile) {
-            entries.push({ path, mode: "100644", type: "blob", sha: null });
-            pushed++;
+          return await this.syncAttempt(token, branch);
+        } catch (error) {
+          if (isRemoteChangedDuringSync(error) && attempt < MAX_SYNC_ATTEMPTS) {
+            latestRemoteChange = error;
             continue;
           }
-          if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-          const data = await this.readLocalBinary(localFile.path);
-          this.ensureFileSize(localFile.path, data.byteLength);
-          const blob = await this.api(token, "POST", "/git/blobs", {
-            content: (0, import_obsidian4.arrayBufferToBase64)(data),
-            encoding: "base64"
-          });
-          entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-          pushed++;
-        }
-        if (entries.length) {
-          const tree = await this.api(token, "POST", "/git/trees", {
-            base_tree: remote.treeSha,
-            tree: entries
-          });
-          const commit = await this.api(token, "POST", "/git/commits", {
-            message: this.commitMessage(),
-            tree: tree.sha,
-            parents: [remote.commitSha]
-          });
-          await this.api(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
-            sha: commit.sha,
-            force: false
-          });
-          commitSha = commit.sha;
+          throw error;
         }
       }
-      const result = {
-        branch,
-        commitSha,
-        pulled,
-        pushed,
-        deleted,
-        conflicts,
-        changed: pulled + pushed + deleted + conflicts > 0
-      };
-      this.update("complete", result.changed ? "\u540C\u6B65\u5B8C\u6210" : "\u672C\u5730\u4E0E\u8FDC\u7AEF\u5DF2\u7ECF\u4E00\u81F4");
-      return result;
+      throw latestRemoteChange != null ? latestRemoteChange : new Error("\u540C\u6B65\u91CD\u8BD5\u5931\u8D25\u3002");
     } catch (error) {
       this.update("error", error instanceof Error ? error.message : String(error));
       throw error;
     } finally {
       this.running = false;
     }
+  }
+  async syncAttempt(token, branch) {
+    var _a;
+    const remote = await this.getHead(token, branch);
+    const base = this.plugin.settings.lastSyncedCommit ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit) : null;
+    this.update("scanning", "\u6B63\u5728\u8BA1\u7B97\u672C\u5730\u6587\u4EF6\u6307\u7EB9\u2026");
+    const local = await this.getLocalSnapshot();
+    const plan = createReconcilePlan(local, remote.files, (_a = base == null ? void 0 : base.files) != null ? _a : null);
+    this.update("reconciling", "\u6B63\u5728\u5408\u5E76\u672C\u5730\u4E0E\u8FDC\u7AEF\u53D8\u66F4\u2026");
+    let pulled = 0;
+    let deleted = 0;
+    let conflicts = 0;
+    const upload = new Map(plan.upload);
+    const protectedConflicts = /* @__PURE__ */ new Set();
+    const localWins = /* @__PURE__ */ new Set();
+    for (const conflict of plan.conflicts) {
+      if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
+        upload.set(conflict.path, conflict.local);
+        protectedConflicts.add(conflict.path);
+        continue;
+      }
+      const remoteModifiedAt = await this.getRemoteModifiedAt(token, branch, conflict.path);
+      if (conflict.local.mtime >= remoteModifiedAt) {
+        upload.set(conflict.path, conflict.local);
+        localWins.add(conflict.path);
+        if (conflict.remote) {
+          const preserved = await this.createRemoteConflictCopy(token, conflict.remote);
+          upload.set(preserved.path, preserved);
+        }
+      } else {
+        const preserved = await this.createConflictCopy(conflict.local);
+        upload.set(preserved.path, preserved);
+      }
+      conflicts++;
+    }
+    const pullOperations = [
+      ...plan.conflicts.filter(({ path }) => !protectedConflicts.has(path) && !localWins.has(path)).map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
+      ...plan.pull.filter(({ path, remote: remoteFile }) => {
+        if (remoteFile || !this.isSelfCoreFile(path)) return true;
+        const localFile = local.get(path);
+        if (localFile) upload.set(path, localFile);
+        return false;
+      })
+    ];
+    for (let index = 0; index < pullOperations.length; index++) {
+      const operation = pullOperations[index];
+      this.update("pulling", `\u6B63\u5728\u5E94\u7528\u8FDC\u7AEF\u53D8\u66F4\uFF1A${operation.path}`, index + 1, pullOperations.length);
+      if (operation.remote) {
+        await this.writeRemoteFile(token, operation.remote);
+        pulled++;
+      } else {
+        const existing = this.plugin.app.vault.getFileByPath(operation.path);
+        if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
+          if (existing) await this.plugin.app.vault.trash(existing, false);
+          else await this.plugin.app.vault.adapter.trashLocal(operation.path);
+          deleted++;
+        }
+      }
+    }
+    const enabledList = await this.ensureSelfEnabled();
+    if (enabledList) upload.set(enabledList.path, enabledList);
+    let commitSha = remote.commitSha;
+    let pushed = 0;
+    if (upload.size) {
+      const entries = [];
+      let index = 0;
+      for (const [path, localFile] of upload) {
+        index++;
+        this.update("pushing", `\u6B63\u5728\u4E0A\u4F20\u672C\u5730\u53D8\u66F4\uFF1A${path}`, index, upload.size);
+        if (!localFile) {
+          entries.push({ path, mode: "100644", type: "blob", sha: null });
+          pushed++;
+          continue;
+        }
+        if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+        const data = await this.readLocalBinary(localFile.path);
+        this.ensureFileSize(localFile.path, data.byteLength);
+        const blob = await this.api(token, "POST", "/git/blobs", {
+          content: (0, import_obsidian4.arrayBufferToBase64)(data),
+          encoding: "base64"
+        });
+        entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+        pushed++;
+      }
+      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
+    }
+    const result = {
+      branch,
+      commitSha,
+      pulled,
+      pushed,
+      deleted,
+      conflicts,
+      changed: pulled + pushed + deleted + conflicts > 0
+    };
+    this.update("complete", result.changed ? "\u540C\u6B65\u5B8C\u6210" : "\u672C\u5730\u4E0E\u8FDC\u7AEF\u5DF2\u7ECF\u4E00\u81F4");
+    return result;
+  }
+  async pushEntriesWithRemoteRetry(token, branch, plannedRemote, entries) {
+    let remote = plannedRemote;
+    let latestRemoteChange = null;
+    for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        await sleep(Math.min(5e3, 350 * attempt));
+        this.update("pushing", `\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u57FA\u4E8E\u6700\u65B0\u7248\u672C\u63D0\u4EA4\uFF08\u7B2C ${attempt} \u6B21\uFF09\u2026`);
+        remote = await this.getHead(token, branch);
+        if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
+          throw new RemoteChangedDuringSyncError("\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u4FEE\u6539\u4E86\u540C\u4E00\u8DEF\u5F84\uFF0C\u6B63\u5728\u91CD\u65B0\u5408\u5E76\u3002");
+        }
+      }
+      try {
+        const tree = await this.api(token, "POST", "/git/trees", {
+          base_tree: remote.treeSha,
+          tree: entries
+        });
+        const commit = await this.api(token, "POST", "/git/commits", {
+          message: this.commitMessage(),
+          tree: tree.sha,
+          parents: [remote.commitSha]
+        });
+        await this.api(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
+          sha: commit.sha,
+          force: false
+        });
+        return commit.sha;
+      } catch (error) {
+        if (isRemoteChangedDuringSync(error) && attempt < MAX_REF_UPDATE_ATTEMPTS) {
+          latestRemoteChange = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw latestRemoteChange != null ? latestRemoteChange : new Error("\u8FDC\u7AEF\u6301\u7EED\u53D8\u5316\uFF0C\u540C\u6B65\u63D0\u4EA4\u5931\u8D25\u3002");
+  }
+  entriesTouchChangedRemotePaths(entries, plannedRemote, latestRemote) {
+    return entries.some((entry) => {
+      var _a, _b;
+      return ((_a = plannedRemote.files.get(entry.path)) == null ? void 0 : _a.sha) !== ((_b = latestRemote.files.get(entry.path)) == null ? void 0 : _b.sha);
+    });
   }
   requireToken() {
     const token = this.plugin.getGitHubToken();
@@ -866,7 +1033,7 @@ var GitHubSyncService = class {
       this.update("scanning", `\u6B63\u5728\u626B\u63CF\uFF1A${path}`, index + 1, files.length);
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
-      snapshot.set(path, { path, sha: await gitBlobSha(data) });
+      snapshot.set(path, { path, sha: await gitBlobSha(data), mtime: await this.getLocalModifiedAt(path) });
     }
     return snapshot;
   }
@@ -917,7 +1084,39 @@ var GitHubSyncService = class {
     const path = await this.availableConflictPath(local.path);
     await this.ensureParentFolders(path);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
-    return { path, sha: await gitBlobSha(data) };
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
+  }
+  async createRemoteConflictCopy(token, remote) {
+    this.ensureFileSize(remote.path, remote.size);
+    const blob = await this.api(token, "GET", `/git/blobs/${encodeURIComponent(remote.sha)}`);
+    if (blob.encoding !== "base64") throw new Error(`GitHub \u8FD4\u56DE\u4E86\u4E0D\u652F\u6301\u7684\u7F16\u7801\uFF1A${remote.path}`);
+    const data = (0, import_obsidian4.base64ToArrayBuffer)(blob.content.replace(/\s/g, ""));
+    const path = await this.availableConflictPath(remote.path);
+    await this.ensureParentFolders(path);
+    await this.plugin.app.vault.adapter.writeBinary(path, data);
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
+  }
+  async getLocalModifiedAt(path) {
+    var _a;
+    const file = this.plugin.app.vault.getFileByPath(path);
+    if (file instanceof import_obsidian4.TFile) return file.stat.mtime;
+    try {
+      const stat = await this.plugin.app.vault.adapter.stat(path);
+      return (_a = stat == null ? void 0 : stat.mtime) != null ? _a : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  async getRemoteModifiedAt(token, branch, path) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    try {
+      const commits = await this.api(token, "GET", `/commits?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(path)}&per_page=1`);
+      const date = (_h = (_g = (_c = (_b = (_a = commits[0]) == null ? void 0 : _a.commit) == null ? void 0 : _b.committer) == null ? void 0 : _c.date) != null ? _g : (_f = (_e = (_d = commits[0]) == null ? void 0 : _d.commit) == null ? void 0 : _e.author) == null ? void 0 : _f.date) != null ? _h : "";
+      const timestamp = Date.parse(date);
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    } catch (e) {
+      return 0;
+    }
   }
   async availableConflictPath(path) {
     const slash = path.lastIndexOf("/");
@@ -972,7 +1171,7 @@ var GitHubSyncService = class {
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
     if (this.isIgnored(path)) return null;
-    return { path, sha: await gitBlobSha(data) };
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
   }
   isSelfCoreFile(path) {
     const enabledList = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/community-plugins.json`);
@@ -1022,7 +1221,7 @@ var GitHubSyncService = class {
     if (response.status === 401) throw new Error("GitHub token \u65E0\u6548\u6216\u5DF2\u7ECF\u8FC7\u671F\u3002");
     if (response.status === 403) throw new Error("GitHub token \u7F3A\u5C11\u4ED3\u5E93 Contents \u8BFB\u5199\u6743\u9650\uFF0C\u6216\u8BF7\u6C42\u53D7\u5230\u901F\u7387\u9650\u5236\u3002");
     if (response.status === 404) throw new Error("\u627E\u4E0D\u5230\u4ED3\u5E93\u3001\u5206\u652F\u6216 commit\uFF1B\u8BF7\u68C0\u67E5 token \u6388\u6743\u8303\u56F4\u548C\u540C\u6B65\u8BBE\u7F6E\u3002");
-    if (response.status === 409 || response.status === 422) throw new Error(`\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u540C\u6B65${detail}`);
+    if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(`\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u53D1\u751F\u53D8\u5316\uFF0C\u5DF2\u81EA\u52A8\u91CD\u65B0\u540C\u6B65${detail}`);
     throw new Error(`GitHub API \u8BF7\u6C42\u5931\u8D25\uFF08HTTP ${response.status}\uFF09${detail}`);
   }
   update(stage, message, current, total) {
@@ -1096,10 +1295,43 @@ function sanitizeSegment(value) {
 function adapterPath(value) {
   return (0, import_obsidian4.normalizePath)(value.replace(/^\/+/, ""));
 }
+var RemoteChangedDuringSyncError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RemoteChangedDuringSyncError";
+  }
+};
+function sleep(milliseconds) {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+function isRemoteChangedDuringSync(error) {
+  return error instanceof RemoteChangedDuringSyncError || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
+}
 
 // main.ts
 var GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
+var SYNCED_VIEWER_STATE_PATH = ".obsidian/plugins/obsidian-viewer/sync-state.json";
+var LOCAL_SYNC_STATE_PATH = ".obsidian/plugins/obsidian-viewer/local-sync-state.json";
 var DEFAULT_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+  ".obsidian/plugins/obsidian-viewer/*.conflict-*",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/"
+].join("\n");
+var PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/"
+].join("\n");
+var DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/workspace*.json",
   ".obsidian/community-plugins*.json",
@@ -1160,7 +1392,7 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     this.syncStatus = { stage: "idle", message: "\u5C1A\u672A\u540C\u6B65" };
     this.githubSync = new GitHubSyncService(this, (status) => {
       this.syncStatus = status;
-      this.refreshDashboard();
+      void this.refreshDashboard();
     });
   }
   async onload() {
@@ -1219,12 +1451,12 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.searchCache.delete(file.path);
-      if (file instanceof import_obsidian5.TFile) void this.removeMissingPath(file.path);
+      if (file instanceof import_obsidian5.TAbstractFile) void this.removeMissingPath(file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.searchCache.delete(oldPath);
-      if (file instanceof import_obsidian5.TFile) void this.renameTrackedPath(oldPath, file.path);
+      if (file instanceof import_obsidian5.TAbstractFile) void this.renameTrackedPath(oldPath, file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
@@ -1250,6 +1482,7 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
   async loadSettings() {
     var _a, _b;
     const loaded = await this.loadData();
+    const localSyncState = await this.loadLocalSyncState(loaded);
     const loadedDeviceName = (_b = (_a = loaded == null ? void 0 : loaded.syncDeviceName) == null ? void 0 : _a.trim()) != null ? _b : "";
     const syncDeviceNameAuto = typeof (loaded == null ? void 0 : loaded.syncDeviceNameAuto) === "boolean" ? loaded.syncDeviceNameAuto : !loadedDeviceName || AUTO_GENERATED_DEVICE_NAMES.has(loadedDeviceName);
     this.settings = {
@@ -1259,21 +1492,29 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       favorites: Array.isArray(loaded == null ? void 0 : loaded.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded == null ? void 0 : loaded.history) ? loaded.history : [],
-      quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {}
+      quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
+      lastSyncedCommit: localSyncState.lastSyncedCommit,
+      lastSyncAt: localSyncState.lastSyncAt,
+      lastSyncSummary: localSyncState.lastSyncSummary
     };
     let migrated = (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
-    if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
-    if (migrated) await this.saveData(this.settings);
+    if (await this.applySyncedViewerStateFromDisk()) migrated = true;
+    if (migrated) await this.savePluginData();
+    await this.saveLocalSyncState();
+    await this.saveSyncedViewerState();
     this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary };
   }
   async saveSettings() {
-    await this.saveData(this.settings);
+    await this.savePluginData();
+    await this.saveLocalSyncState();
+    await this.saveSyncedViewerState();
     this.applyReaderSettings();
     this.configurePeriodicSync();
-    this.refreshDashboard();
+    await this.refreshDashboard();
   }
   getGitHubToken() {
     var _a, _b;
@@ -1290,12 +1531,21 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     return `${result.repository} \xB7 ${result.branch} \xB7 ${result.commitSha.slice(0, 7)}`;
   }
   async syncNow(showNotice = true) {
+    if (this.githubSync.isRunning) {
+      if (showNotice) new import_obsidian5.Notice("\u540C\u6B65\u5DF2\u7ECF\u5728\u8FDB\u884C\u4E2D\u3002");
+      return;
+    }
     try {
+      await this.saveSettings();
       const result = await this.githubSync.sync();
       this.settings.lastSyncedCommit = result.commitSha;
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed ? `\u62C9\u53D6 ${result.pulled}\u3001\u4E0A\u4F20 ${result.pushed}\u3001\u5220\u9664 ${result.deleted}\u3001\u51B2\u7A81 ${result.conflicts}` : "\u672C\u5730\u4E0E\u8FDC\u7AEF\u5DF2\u7ECF\u4E00\u81F4";
+      await this.saveLocalSyncState();
+      await this.loadSettings();
+      await this.applySyncedViewerStateFromDisk();
       await this.saveSettings();
+      await this.refreshDashboard();
       if (showNotice) new import_obsidian5.Notice(`GitHub \u540C\u6B65\u5B8C\u6210\uFF1A${this.settings.lastSyncSummary}`);
     } catch (error) {
       if (showNotice) new import_obsidian5.Notice(error instanceof Error ? error.message : String(error), 8e3);
@@ -1334,9 +1584,10 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
   }
   async toggleFavorite(file) {
     const isFavorite = this.isFavorite(file.path);
+    const name = file instanceof import_obsidian5.TFile ? file.basename : file.name || "\u6839\u76EE\u5F55";
     this.settings.favorites = isFavorite ? this.settings.favorites.filter((path) => path !== file.path) : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
-    new import_obsidian5.Notice(isFavorite ? `\u5DF2\u53D6\u6D88\u6536\u85CF\uFF1A${file.basename}` : `\u5DF2\u6536\u85CF\uFF1A${file.basename}`);
+    new import_obsidian5.Notice(isFavorite ? `\u5DF2\u53D6\u6D88\u6536\u85CF\uFF1A${name}` : `\u5DF2\u6536\u85CF\uFF1A${name}`);
   }
   async setHomeNote(file) {
     this.settings.homeNote = file.path;
@@ -1345,8 +1596,9 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
   }
   async recordOpen(file) {
     this.settings.history = [file.path, ...this.settings.history.filter((path) => path !== file.path)].slice(0, this.settings.maxHistory);
-    await this.saveData(this.settings);
-    this.refreshDashboard();
+    await this.savePluginData();
+    await this.saveSyncedViewerState();
+    await this.refreshDashboard();
   }
   async clearHistory() {
     this.settings.history = [];
@@ -1355,6 +1607,10 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
   getMarkdownFile(path) {
     const file = this.app.vault.getAbstractFileByPath(path);
     return file instanceof import_obsidian5.TFile && file.extension === "md" ? file : null;
+  }
+  getFileOrFolder(path) {
+    const item = this.app.vault.getAbstractFileByPath(path);
+    return item instanceof import_obsidian5.TFile || item instanceof import_obsidian5.TFolder ? item : null;
   }
   async searchFiles(query) {
     const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -1376,7 +1632,7 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
       const score = terms.reduce((total, term) => total + (path.includes(term) ? 10 : 1), 0);
       results.push({ file, score });
     }));
-    return results.sort((a, b) => b.score - a.score || a.file.path.localeCompare(b.file.path)).slice(0, 100).map(({ file }) => file);
+    return results.sort((a, b) => b.score - a.score || a.file.basename.localeCompare(b.file.basename) || a.file.path.localeCompare(b.file.path)).slice(0, 100).map(({ file }) => file);
   }
   getQuizProgress(key) {
     var _a;
@@ -1387,20 +1643,21 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     this.quizSaveTimer = window.setTimeout(() => {
       this.quizSaveTimer = null;
-      void this.saveData(this.settings);
+      void this.savePluginData();
     }, 250);
   }
-  refreshDashboard() {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER).forEach((leaf) => {
+  async refreshDashboard() {
+    await Promise.all(this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER).map((leaf) => {
       const view = leaf.view;
-      if (view instanceof ViewerDashboardView) void view.render();
-    });
+      return view instanceof ViewerDashboardView ? view.render() : Promise.resolve();
+    }));
   }
   scheduleSyncOnSave() {
     if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
+      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
       void this.syncNow(false);
     }, 3e4);
   }
@@ -1417,19 +1674,137 @@ var ObsidianViewerPlugin = class extends import_obsidian5.Plugin {
     }, minutes * 6e4);
   }
   async removeMissingPath(path) {
-    this.settings.favorites = this.settings.favorites.filter((entry) => entry !== path);
-    this.settings.history = this.settings.history.filter((entry) => entry !== path);
+    const keep = (entry) => entry !== path && !entry.startsWith(`${path}/`);
+    this.settings.favorites = this.settings.favorites.filter(keep);
+    this.settings.history = this.settings.history.filter(keep);
     if (this.settings.homeNote === path) this.settings.homeNote = "";
     await this.saveSettings();
   }
   async renameTrackedPath(oldPath, newPath) {
-    const replace = (path) => path === oldPath ? newPath : path;
+    const replace = (path) => {
+      if (path === oldPath) return newPath;
+      if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`;
+      return path;
+    };
     this.settings.favorites = this.settings.favorites.map(replace);
     this.settings.history = this.settings.history.map(replace);
     if (this.settings.homeNote === oldPath) this.settings.homeNote = newPath;
     await this.saveSettings();
   }
+  async loadSyncedViewerState() {
+    const path = syncedViewerStatePath(this.app.vault.configDir);
+    if (!await this.app.vault.adapter.exists(path)) return null;
+    try {
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path));
+      return {
+        version: 1,
+        favorites: normalizeTrackedPaths(parsed.favorites),
+        history: normalizeTrackedPaths(parsed.history)
+      };
+    } catch (error) {
+      new import_obsidian5.Notice(`Viewer \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`, 8e3);
+      return null;
+    }
+  }
+  async applySyncedViewerStateFromDisk() {
+    const syncedState = await this.loadSyncedViewerState();
+    if (!syncedState) return false;
+    this.settings.favorites = syncedState.favorites;
+    this.settings.history = syncedState.history.slice(0, this.settings.maxHistory);
+    return true;
+  }
+  async saveSyncedViewerState() {
+    const path = syncedViewerStatePath(this.app.vault.configDir);
+    const state = {
+      version: 1,
+      favorites: normalizeTrackedPaths(this.settings.favorites),
+      history: normalizeTrackedPaths(this.settings.history).slice(0, this.settings.maxHistory)
+    };
+    this.settings.favorites = state.favorites;
+    this.settings.history = state.history;
+    const content = `${JSON.stringify(state, null, 2)}
+`;
+    try {
+      if (await this.app.vault.adapter.exists(path) && await this.app.vault.adapter.read(path) === content) return;
+      await ensureAdapterParentFolders(this, path);
+      await this.app.vault.adapter.write(path, content);
+    } catch (error) {
+      new import_obsidian5.Notice(`Viewer \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u4FDD\u5B58\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`, 8e3);
+    }
+  }
+  async loadLocalSyncState(loaded) {
+    const path = localSyncStatePath(this.app.vault.configDir);
+    const fallback = {
+      lastSyncedCommit: typeof (loaded == null ? void 0 : loaded.lastSyncedCommit) === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
+      lastSyncAt: typeof (loaded == null ? void 0 : loaded.lastSyncAt) === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
+      lastSyncSummary: typeof (loaded == null ? void 0 : loaded.lastSyncSummary) === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary
+    };
+    if (!await this.app.vault.adapter.exists(path)) return fallback;
+    try {
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path));
+      return {
+        lastSyncedCommit: typeof parsed.lastSyncedCommit === "string" ? parsed.lastSyncedCommit : fallback.lastSyncedCommit,
+        lastSyncAt: typeof parsed.lastSyncAt === "number" ? parsed.lastSyncAt : fallback.lastSyncAt,
+        lastSyncSummary: typeof parsed.lastSyncSummary === "string" ? parsed.lastSyncSummary : fallback.lastSyncSummary
+      };
+    } catch (e) {
+      return fallback;
+    }
+  }
+  async saveLocalSyncState() {
+    const path = localSyncStatePath(this.app.vault.configDir);
+    const state = {
+      lastSyncedCommit: this.settings.lastSyncedCommit,
+      lastSyncAt: this.settings.lastSyncAt,
+      lastSyncSummary: this.settings.lastSyncSummary
+    };
+    await ensureAdapterParentFolders(this, path);
+    await this.app.vault.adapter.write(path, `${JSON.stringify(state, null, 2)}
+`);
+  }
+  async savePluginData() {
+    const syncedSettings = { ...this.settings };
+    delete syncedSettings.favorites;
+    delete syncedSettings.history;
+    delete syncedSettings.lastSyncedCommit;
+    delete syncedSettings.lastSyncAt;
+    delete syncedSettings.lastSyncSummary;
+    await this.saveData(syncedSettings);
+  }
 };
+function syncedViewerStatePath(configDir) {
+  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/obsidian-viewer/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
+}
+function localSyncStatePath(configDir) {
+  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/obsidian-viewer/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+}
+function normalizeTrackedPaths(paths) {
+  if (!Array.isArray(paths)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const output = [];
+  for (const path of paths) {
+    if (typeof path !== "string") continue;
+    const normalized = (0, import_obsidian5.normalizePath)(path.trim());
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
+}
+async function ensureAdapterParentFolders(plugin, path) {
+  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  if (!parent) return;
+  let current = "";
+  for (const segment of parent.split("/")) {
+    current = current ? `${current}/${segment}` : segment;
+    if (await plugin.app.vault.adapter.exists(current)) continue;
+    try {
+      await plugin.app.vault.createFolder(current);
+    } catch (error) {
+      if (!await plugin.app.vault.adapter.exists(current)) throw error;
+    }
+  }
+}
 function defaultDeviceName() {
   if (import_obsidian5.Platform.isIosApp) return "iOS";
   if (import_obsidian5.Platform.isAndroidApp) return "Android";

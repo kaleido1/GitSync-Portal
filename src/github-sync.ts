@@ -10,6 +10,8 @@ import type ObsidianViewerPlugin from "../main";
 const API_ROOT = "https://api.github.com";
 const API_VERSION = "2026-03-10";
 const HARD_EXCLUDES = [".git/", ".trash/"];
+const MAX_SYNC_ATTEMPTS = 5;
+const MAX_REF_UPDATE_ATTEMPTS = 8;
 
 interface GitHubRepository {
   default_branch: string;
@@ -39,10 +41,24 @@ interface GitTreeItem {
   size?: number;
 }
 
+interface TreeEntry {
+  path: string;
+  mode: string;
+  type: "blob";
+  sha: string | null;
+}
+
 interface GitBlob {
   content: string;
   encoding: string;
   sha: string;
+}
+
+interface GitHubPathCommit {
+  commit?: {
+    author?: { date?: string };
+    committer?: { date?: string };
+  };
 }
 
 interface RemoteFile {
@@ -61,6 +77,7 @@ interface RemoteSnapshot {
 interface LocalFile {
   path: string;
   sha: string;
+  mtime: number;
 }
 
 interface ReconcilePlan {
@@ -124,122 +141,180 @@ export class GitHubSyncService {
       this.update("connecting", "正在连接 GitHub…");
       const repository = await this.getRepository(token);
       const branch = this.plugin.settings.syncBranch.trim() || repository.default_branch;
-      const remote = await this.getHead(token, branch);
-      const base = this.plugin.settings.lastSyncedCommit
-        ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit)
-        : null;
-
-      this.update("scanning", "正在计算本地文件指纹…");
-      const local = await this.getLocalSnapshot();
-      const plan = createReconcilePlan(local, remote.files, base?.files ?? null);
-      this.update("reconciling", "正在合并本地与远端变更…");
-
-      let pulled = 0;
-      let deleted = 0;
-      let conflicts = 0;
-      const upload = new Map(plan.upload);
-      const protectedConflicts = new Set<string>();
-
-      for (const conflict of plan.conflicts) {
-        if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
-          upload.set(conflict.path, conflict.local);
-          protectedConflicts.add(conflict.path);
-          continue;
-        }
-        const preserved = await this.createConflictCopy(conflict.local);
-        upload.set(preserved.path, preserved);
-        conflicts++;
-      }
-
-      const pullOperations = [
-        ...plan.conflicts
-          .filter(({ path }) => !protectedConflicts.has(path))
-          .map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
-        ...plan.pull.filter(({ path, remote: remoteFile }) => {
-          if (remoteFile || !this.isSelfCoreFile(path)) return true;
-          const localFile = local.get(path);
-          if (localFile) upload.set(path, localFile);
-          return false;
-        }),
-      ];
-      for (let index = 0; index < pullOperations.length; index++) {
-        const operation = pullOperations[index]!;
-        this.update("pulling", `正在应用远端变更：${operation.path}`, index + 1, pullOperations.length);
-        if (operation.remote) {
-          await this.writeRemoteFile(token, operation.remote);
-          pulled++;
-        } else {
-          const existing = this.plugin.app.vault.getFileByPath(operation.path);
-          if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
-            if (existing) await this.plugin.app.vault.trash(existing, false);
-            else await this.plugin.app.vault.adapter.trashLocal(operation.path);
-            deleted++;
+      let latestRemoteChange: RemoteChangedDuringSyncError | null = null;
+      for (let attempt = 1; attempt <= MAX_SYNC_ATTEMPTS; attempt++) {
+        try {
+          if (attempt > 1) {
+            await sleep(600 * attempt);
+            this.update("connecting", `远端刚刚更新，正在重新同步（第 ${attempt} 次）…`);
           }
-        }
-      }
-
-      const enabledList = await this.ensureSelfEnabled();
-      if (enabledList) upload.set(enabledList.path, enabledList);
-
-      let commitSha = remote.commitSha;
-      let pushed = 0;
-      if (upload.size) {
-        const entries: Array<{ path: string; mode: string; type: "blob"; sha: string | null }> = [];
-        let index = 0;
-        for (const [path, localFile] of upload) {
-          index++;
-          this.update("pushing", `正在上传本地变更：${path}`, index, upload.size);
-          if (!localFile) {
-            entries.push({ path, mode: "100644", type: "blob", sha: null });
-            pushed++;
+          return await this.syncAttempt(token, branch);
+        } catch (error) {
+          if (isRemoteChangedDuringSync(error) && attempt < MAX_SYNC_ATTEMPTS) {
+            latestRemoteChange = error;
             continue;
           }
-          if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-          const data = await this.readLocalBinary(localFile.path);
-          this.ensureFileSize(localFile.path, data.byteLength);
-          const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
-            content: arrayBufferToBase64(data),
-            encoding: "base64",
-          });
-          entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-          pushed++;
-        }
-
-        if (entries.length) {
-          const tree = await this.api<{ sha: string }>(token, "POST", "/git/trees", {
-            base_tree: remote.treeSha,
-            tree: entries,
-          });
-          const commit = await this.api<GitCommit>(token, "POST", "/git/commits", {
-            message: this.commitMessage(),
-            tree: tree.sha,
-            parents: [remote.commitSha],
-          });
-          await this.api<GitReference>(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
-            sha: commit.sha,
-            force: false,
-          });
-          commitSha = commit.sha;
+          throw error;
         }
       }
-
-      const result: GitHubSyncResult = {
-        branch,
-        commitSha,
-        pulled,
-        pushed,
-        deleted,
-        conflicts,
-        changed: pulled + pushed + deleted + conflicts > 0,
-      };
-      this.update("complete", result.changed ? "同步完成" : "本地与远端已经一致");
-      return result;
+      throw latestRemoteChange ?? new Error("同步重试失败。");
     } catch (error) {
       this.update("error", error instanceof Error ? error.message : String(error));
       throw error;
     } finally {
       this.running = false;
     }
+  }
+
+  private async syncAttempt(token: string, branch: string): Promise<GitHubSyncResult> {
+    const remote = await this.getHead(token, branch);
+    const base = this.plugin.settings.lastSyncedCommit
+      ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit)
+      : null;
+
+    this.update("scanning", "正在计算本地文件指纹…");
+    const local = await this.getLocalSnapshot();
+    const plan = createReconcilePlan(local, remote.files, base?.files ?? null);
+    this.update("reconciling", "正在合并本地与远端变更…");
+
+    let pulled = 0;
+    let deleted = 0;
+    let conflicts = 0;
+    const upload = new Map(plan.upload);
+    const protectedConflicts = new Set<string>();
+    const localWins = new Set<string>();
+
+    for (const conflict of plan.conflicts) {
+      if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
+        upload.set(conflict.path, conflict.local);
+        protectedConflicts.add(conflict.path);
+        continue;
+      }
+      const remoteModifiedAt = await this.getRemoteModifiedAt(token, branch, conflict.path);
+      if (conflict.local.mtime >= remoteModifiedAt) {
+        upload.set(conflict.path, conflict.local);
+        localWins.add(conflict.path);
+        if (conflict.remote) {
+          const preserved = await this.createRemoteConflictCopy(token, conflict.remote);
+          upload.set(preserved.path, preserved);
+        }
+      } else {
+        const preserved = await this.createConflictCopy(conflict.local);
+        upload.set(preserved.path, preserved);
+      }
+      conflicts++;
+    }
+
+    const pullOperations = [
+      ...plan.conflicts
+        .filter(({ path }) => !protectedConflicts.has(path) && !localWins.has(path))
+        .map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
+      ...plan.pull.filter(({ path, remote: remoteFile }) => {
+        if (remoteFile || !this.isSelfCoreFile(path)) return true;
+        const localFile = local.get(path);
+        if (localFile) upload.set(path, localFile);
+        return false;
+      }),
+    ];
+    for (let index = 0; index < pullOperations.length; index++) {
+      const operation = pullOperations[index]!;
+      this.update("pulling", `正在应用远端变更：${operation.path}`, index + 1, pullOperations.length);
+      if (operation.remote) {
+        await this.writeRemoteFile(token, operation.remote);
+        pulled++;
+      } else {
+        const existing = this.plugin.app.vault.getFileByPath(operation.path);
+        if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
+          if (existing) await this.plugin.app.vault.trash(existing, false);
+          else await this.plugin.app.vault.adapter.trashLocal(operation.path);
+          deleted++;
+        }
+      }
+    }
+
+    const enabledList = await this.ensureSelfEnabled();
+    if (enabledList) upload.set(enabledList.path, enabledList);
+
+    let commitSha = remote.commitSha;
+    let pushed = 0;
+    if (upload.size) {
+      const entries: TreeEntry[] = [];
+      let index = 0;
+      for (const [path, localFile] of upload) {
+        index++;
+        this.update("pushing", `正在上传本地变更：${path}`, index, upload.size);
+        if (!localFile) {
+          entries.push({ path, mode: "100644", type: "blob", sha: null });
+          pushed++;
+          continue;
+        }
+        if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+        const data = await this.readLocalBinary(localFile.path);
+        this.ensureFileSize(localFile.path, data.byteLength);
+        const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
+          content: arrayBufferToBase64(data),
+          encoding: "base64",
+        });
+        entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+        pushed++;
+      }
+
+      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
+    }
+
+    const result: GitHubSyncResult = {
+      branch,
+      commitSha,
+      pulled,
+      pushed,
+      deleted,
+      conflicts,
+      changed: pulled + pushed + deleted + conflicts > 0,
+    };
+    this.update("complete", result.changed ? "同步完成" : "本地与远端已经一致");
+    return result;
+  }
+
+  private async pushEntriesWithRemoteRetry(token: string, branch: string, plannedRemote: RemoteSnapshot, entries: TreeEntry[]): Promise<string> {
+    let remote = plannedRemote;
+    let latestRemoteChange: RemoteChangedDuringSyncError | null = null;
+    for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        await sleep(Math.min(5000, 350 * attempt));
+        this.update("pushing", `远端刚刚更新，正在基于最新版本提交（第 ${attempt} 次）…`);
+        remote = await this.getHead(token, branch);
+        if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
+          throw new RemoteChangedDuringSyncError("远端在同步期间修改了同一路径，正在重新合并。");
+        }
+      }
+      try {
+        const tree = await this.api<{ sha: string }>(token, "POST", "/git/trees", {
+          base_tree: remote.treeSha,
+          tree: entries,
+        });
+        const commit = await this.api<GitCommit>(token, "POST", "/git/commits", {
+          message: this.commitMessage(),
+          tree: tree.sha,
+          parents: [remote.commitSha],
+        });
+        await this.api<GitReference>(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
+          sha: commit.sha,
+          force: false,
+        });
+        return commit.sha;
+      } catch (error) {
+        if (isRemoteChangedDuringSync(error) && attempt < MAX_REF_UPDATE_ATTEMPTS) {
+          latestRemoteChange = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw latestRemoteChange ?? new Error("远端持续变化，同步提交失败。");
+  }
+
+  private entriesTouchChangedRemotePaths(entries: TreeEntry[], plannedRemote: RemoteSnapshot, latestRemote: RemoteSnapshot): boolean {
+    return entries.some((entry) => plannedRemote.files.get(entry.path)?.sha !== latestRemote.files.get(entry.path)?.sha);
   }
 
   private requireToken(): string {
@@ -287,7 +362,7 @@ export class GitHubSyncService {
       this.update("scanning", `正在扫描：${path}`, index + 1, files.length);
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
-      snapshot.set(path, { path, sha: await gitBlobSha(data) });
+      snapshot.set(path, { path, sha: await gitBlobSha(data), mtime: await this.getLocalModifiedAt(path) });
     }
     return snapshot;
   }
@@ -342,7 +417,40 @@ export class GitHubSyncService {
     const path = await this.availableConflictPath(local.path);
     await this.ensureParentFolders(path);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
-    return { path, sha: await gitBlobSha(data) };
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
+  }
+
+  private async createRemoteConflictCopy(token: string, remote: RemoteFile): Promise<LocalFile> {
+    this.ensureFileSize(remote.path, remote.size);
+    const blob = await this.api<GitBlob>(token, "GET", `/git/blobs/${encodeURIComponent(remote.sha)}`);
+    if (blob.encoding !== "base64") throw new Error(`GitHub 返回了不支持的编码：${remote.path}`);
+    const data = base64ToArrayBuffer(blob.content.replace(/\s/g, ""));
+    const path = await this.availableConflictPath(remote.path);
+    await this.ensureParentFolders(path);
+    await this.plugin.app.vault.adapter.writeBinary(path, data);
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
+  }
+
+  private async getLocalModifiedAt(path: string): Promise<number> {
+    const file = this.plugin.app.vault.getFileByPath(path);
+    if (file instanceof TFile) return file.stat.mtime;
+    try {
+      const stat = await this.plugin.app.vault.adapter.stat(path);
+      return stat?.mtime ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async getRemoteModifiedAt(token: string, branch: string, path: string): Promise<number> {
+    try {
+      const commits = await this.api<GitHubPathCommit[]>(token, "GET", `/commits?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(path)}&per_page=1`);
+      const date = commits[0]?.commit?.committer?.date ?? commits[0]?.commit?.author?.date ?? "";
+      const timestamp = Date.parse(date);
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private async availableConflictPath(path: string): Promise<string> {
@@ -399,7 +507,7 @@ export class GitHubSyncService {
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     await this.plugin.app.vault.adapter.writeBinary(path, data);
     if (this.isIgnored(path)) return null;
-    return { path, sha: await gitBlobSha(data) };
+    return { path, sha: await gitBlobSha(data), mtime: Date.now() };
   }
 
   private isSelfCoreFile(path: string): boolean {
@@ -454,7 +562,7 @@ export class GitHubSyncService {
     if (response.status === 401) throw new Error("GitHub token 无效或已经过期。");
     if (response.status === 403) throw new Error("GitHub token 缺少仓库 Contents 读写权限，或请求受到速率限制。");
     if (response.status === 404) throw new Error("找不到仓库、分支或 commit；请检查 token 授权范围和同步设置。");
-    if (response.status === 409 || response.status === 422) throw new Error(`远端在同步期间发生变化，请重新同步${detail}`);
+    if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(`远端在同步期间发生变化，已自动重新同步${detail}`);
     throw new Error(`GitHub API 请求失败（HTTP ${response.status}）${detail}`);
   }
 
@@ -545,4 +653,20 @@ function sanitizeSegment(value: string): string {
 
 function adapterPath(value: string): string {
   return normalizePath(value.replace(/^\/+/, ""));
+}
+
+class RemoteChangedDuringSyncError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RemoteChangedDuringSyncError";
+  }
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+
+function isRemoteChangedDuringSync(error: unknown): error is RemoteChangedDuringSyncError {
+  return error instanceof RemoteChangedDuringSyncError
+    || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
 }

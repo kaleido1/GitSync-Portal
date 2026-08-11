@@ -1,14 +1,18 @@
-import { ItemView, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, TAbstractFile, TFile, TFolder, WorkspaceLeaf, setIcon } from "obsidian";
 import type ObsidianViewerPlugin from "../main";
 
 export const VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
+type ViewerListItem = TFile | TFolder;
 
 export class ViewerDashboardView extends ItemView {
   private activeTab: DashboardTab = "home";
   private searchQuery = "";
   private searchSequence = 0;
   private searchTimer: number | null = null;
+  private currentFolderPath = "";
+  private folderBackStack: string[] = [];
+  private folderForwardStack: string[] = [];
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: ObsidianViewerPlugin) {
     super(leaf);
@@ -53,7 +57,7 @@ export class ViewerDashboardView extends ItemView {
 
     if (this.activeTab === "home") await this.renderHome(root);
     if (this.activeTab === "files") await this.renderFiles(root);
-    if (this.activeTab === "favorites") this.renderTrackedFiles(root, "收藏笔记", this.plugin.settings.favorites, "还没有收藏笔记。", true);
+    if (this.activeTab === "favorites") this.renderTrackedItems(root, "收藏", this.plugin.settings.favorites, "还没有收藏。", true);
     if (this.activeTab === "history") this.renderHistory(root);
   }
 
@@ -108,7 +112,7 @@ export class ViewerDashboardView extends ItemView {
 
     this.renderSyncCard(root);
 
-    const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getMarkdownFile(path)).filter((file): file is TFile => file !== null).slice(0, 5);
+    const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getFileOrFolder(path)).filter((item): item is ViewerListItem => item !== null).slice(0, 5);
     this.renderSection(root, "收藏", favorites, "还没有收藏笔记。", true);
 
     const recent = this.plugin.settings.history.map((path) => this.plugin.getMarkdownFile(path)).filter((file): file is TFile => file !== null).slice(0, 8);
@@ -145,7 +149,7 @@ export class ViewerDashboardView extends ItemView {
   }
 
   private async renderFiles(root: HTMLElement): Promise<void> {
-    const searchBox = root.createDiv({ cls: "ov-search-box" });
+    const searchBox = root.createDiv({ cls: "ov-search-box", attr: { tabindex: "0", role: "search" } });
     setIcon(searchBox.createSpan(), "search");
     const input = searchBox.createEl("input", {
       type: "search",
@@ -153,6 +157,8 @@ export class ViewerDashboardView extends ItemView {
       value: this.searchQuery,
       attr: { "aria-label": "搜索文件名和正文" },
     });
+    searchBox.addEventListener("click", () => input.focus());
+    searchBox.addEventListener("focus", () => input.focus());
     input.addEventListener("input", () => {
       this.searchQuery = input.value;
       if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
@@ -166,10 +172,72 @@ export class ViewerDashboardView extends ItemView {
       files = await this.plugin.searchFiles(this.searchQuery);
       if (sequence !== this.searchSequence) return;
       status.remove();
+      this.renderSection(root, `搜索结果（${files.length}）`, files, "没有匹配的笔记。", true);
     } else {
-      files = this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path)).slice(0, 300);
+      this.renderDirectory(root);
     }
-    this.renderSection(root, this.searchQuery.trim() ? `搜索结果（${files.length}）` : `全部笔记（显示 ${files.length}）`, files, "没有匹配的笔记。", true);
+  }
+
+  private renderDirectory(root: HTMLElement): void {
+    const folder = this.getCurrentFolder();
+    const controls = root.createDiv({ cls: "ov-directory-controls" });
+    this.iconButton(controls, "arrow-left", "后退", () => this.navigateHistory(-1)).disabled = this.folderBackStack.length === 0;
+    this.iconButton(controls, "arrow-right", "前进", () => this.navigateHistory(1)).disabled = this.folderForwardStack.length === 0;
+    this.iconButton(controls, "arrow-up", "上一级", () => this.openParentFolder()).disabled = !this.currentFolderPath;
+    const location = controls.createDiv({ cls: "ov-directory-location" });
+    setIcon(location.createSpan(), "folder-open");
+    location.createSpan({ text: this.currentFolderPath || "Vault 根目录" });
+
+    this.renderBreadcrumbs(root);
+    const children = [...folder.children].sort(compareVaultItems);
+    this.renderDirectoryList(root, children);
+  }
+
+  private renderBreadcrumbs(root: HTMLElement): void {
+    const crumbs = root.createDiv({ cls: "ov-breadcrumbs" });
+    const rootButton = crumbs.createEl("button", { text: "根目录" });
+    rootButton.addEventListener("click", () => this.openFolder("", true));
+    if (!this.currentFolderPath) return;
+    let path = "";
+    for (const segment of this.currentFolderPath.split("/")) {
+      crumbs.createSpan({ text: "/" });
+      path = path ? `${path}/${segment}` : segment;
+      const button = crumbs.createEl("button", { text: segment });
+      const target = path;
+      button.addEventListener("click", () => this.openFolder(target, true));
+    }
+  }
+
+  private renderDirectoryList(root: HTMLElement, children: TAbstractFile[]): void {
+    root.createEl("h3", { text: `${this.currentFolderPath || "根目录"}（${children.length}）`, cls: "ov-section-title" });
+    const list = root.createDiv({ cls: "ov-file-list" });
+    if (!children.length) {
+      list.createEl("p", { text: "当前目录为空。", cls: "ov-empty" });
+      return;
+    }
+    children.forEach((child) => {
+      const row = list.createDiv({ cls: "ov-file-row" });
+      const open = row.createEl("button", { cls: "ov-file-open" });
+      if (child instanceof TFolder) {
+        setIcon(open.createSpan({ cls: "ov-file-icon" }), "folder");
+        const labels = open.createSpan({ cls: "ov-file-labels" });
+        labels.createEl("strong", { text: child.name || "根目录" });
+        labels.createEl("small", { text: `${child.children.length} 项 · ${child.path || "Vault 根目录"}` });
+        open.addEventListener("click", () => this.openFolder(child.path, true));
+        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(child));
+        return;
+      }
+      if (child instanceof TFile) {
+        setIcon(open.createSpan({ cls: "ov-file-icon" }), child.extension === "md" ? "file-text" : "file");
+        const labels = open.createSpan({ cls: "ov-file-labels" });
+        labels.createEl("strong", { text: child.basename });
+        labels.createEl("small", { text: child.path });
+        open.addEventListener("click", () => void this.plugin.openFile(child));
+        if (child.extension === "md") {
+          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(child));
+        }
+      }
+    });
   }
 
   private renderHistory(root: HTMLElement): void {
@@ -178,21 +246,23 @@ export class ViewerDashboardView extends ItemView {
     const clear = heading.createEl("button", { text: "清空", cls: "mod-warning" });
     clear.disabled = this.plugin.settings.history.length === 0;
     clear.addEventListener("click", () => void this.plugin.clearHistory());
-    this.renderTrackedFiles(root, "", this.plugin.settings.history, "暂无阅读历史。", false, false);
+    this.renderTrackedItems(root, "", this.plugin.settings.history, "暂无阅读历史。", false, false);
   }
 
-  private renderTrackedFiles(root: HTMLElement, title: string, paths: string[], emptyText: string, showFavorite: boolean, showHeading = true): void {
-    const files = paths.map((path) => this.plugin.getMarkdownFile(path)).filter((file): file is TFile => file !== null);
-    if (showHeading && title) root.createEl("h3", { text: `${title}（${files.length}）`, cls: "ov-section-title" });
-    this.renderFileList(root, files, emptyText, showFavorite);
+  private renderTrackedItems(root: HTMLElement, title: string, paths: string[], emptyText: string, showFavorite: boolean, showHeading = true): void {
+    const items = paths
+      .map((path) => showFavorite ? this.plugin.getFileOrFolder(path) : this.plugin.getMarkdownFile(path))
+      .filter((item): item is ViewerListItem => item !== null);
+    if (showHeading && title) root.createEl("h3", { text: `${title}（${items.length}）`, cls: "ov-section-title" });
+    this.renderFileList(root, items, emptyText, showFavorite);
   }
 
-  private renderSection(root: HTMLElement, title: string, files: TFile[], emptyText: string, showFavorite: boolean): void {
+  private renderSection(root: HTMLElement, title: string, files: ViewerListItem[], emptyText: string, showFavorite: boolean): void {
     root.createEl("h3", { text: title, cls: "ov-section-title" });
     this.renderFileList(root, files, emptyText, showFavorite);
   }
 
-  private renderFileList(root: HTMLElement, files: TFile[], emptyText: string, showFavorite: boolean): void {
+  private renderFileList(root: HTMLElement, files: ViewerListItem[], emptyText: string, showFavorite: boolean): void {
     const list = root.createDiv({ cls: "ov-file-list" });
     if (!files.length) {
       list.createEl("p", { text: emptyText, cls: "ov-empty" });
@@ -201,11 +271,19 @@ export class ViewerDashboardView extends ItemView {
     files.forEach((file) => {
       const row = list.createDiv({ cls: "ov-file-row" });
       const open = row.createEl("button", { cls: "ov-file-open" });
-      setIcon(open.createSpan({ cls: "ov-file-icon" }), "file-text");
+      setIcon(open.createSpan({ cls: "ov-file-icon" }), file instanceof TFolder ? "folder" : "file-text");
       const labels = open.createSpan({ cls: "ov-file-labels" });
-      labels.createEl("strong", { text: file.basename });
-      labels.createEl("small", { text: file.path });
-      open.addEventListener("click", () => void this.plugin.openFile(file));
+      labels.createEl("strong", { text: file instanceof TFolder ? file.name || "根目录" : file.basename });
+      labels.createEl("small", { text: file instanceof TFolder ? `${file.children.length} 项 · ${file.path || "Vault 根目录"}` : file.path });
+      open.addEventListener("click", () => {
+        if (file instanceof TFolder) {
+          this.activeTab = "files";
+          this.searchQuery = "";
+          this.openFolder(file.path, true);
+        } else {
+          void this.plugin.openFile(file);
+        }
+      });
       if (showFavorite) {
         this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.isFavorite(file.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(file));
       }
@@ -235,4 +313,47 @@ export class ViewerDashboardView extends ItemView {
     button.addEventListener("click", action);
     return button;
   }
+
+  private getCurrentFolder(): TFolder {
+    if (!this.currentFolderPath) return this.app.vault.getRoot();
+    const folder = this.app.vault.getAbstractFileByPath(this.currentFolderPath);
+    if (folder instanceof TFolder) return folder;
+    this.currentFolderPath = "";
+    return this.app.vault.getRoot();
+  }
+
+  private openFolder(path: string, trackHistory: boolean): void {
+    if (path === this.currentFolderPath) return;
+    if (trackHistory) {
+      this.folderBackStack.push(this.currentFolderPath);
+      this.folderForwardStack = [];
+    }
+    this.currentFolderPath = path;
+    void this.render();
+  }
+
+  private openParentFolder(): void {
+    if (!this.currentFolderPath) return;
+    const parent = this.currentFolderPath.includes("/")
+      ? this.currentFolderPath.slice(0, this.currentFolderPath.lastIndexOf("/"))
+      : "";
+    this.openFolder(parent, true);
+  }
+
+  private navigateHistory(direction: -1 | 1): void {
+    const from = direction < 0 ? this.folderBackStack : this.folderForwardStack;
+    const to = direction < 0 ? this.folderForwardStack : this.folderBackStack;
+    const next = from.pop();
+    if (next === undefined) return;
+    to.push(this.currentFolderPath);
+    this.currentFolderPath = next;
+    void this.render();
+  }
+}
+
+function compareVaultItems(a: TAbstractFile, b: TAbstractFile): number {
+  const aFolder = a instanceof TFolder;
+  const bFolder = b instanceof TFolder;
+  if (aFolder !== bFolder) return aFolder ? -1 : 1;
+  return a.name.localeCompare(b.name);
 }

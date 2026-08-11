@@ -35,19 +35,19 @@ jobs:
           mkdir -p release/obsidian-viewer
           cp main.js manifest.json styles.css release/obsidian-viewer/
           cd release
-          zip -r ../obsidian-viewer.zip obsidian-viewer
+          zip -r ../obsidian-viewer-${{ github.ref_name }}.zip obsidian-viewer
 
       - name: Verify ZIP layout
         run: |
-          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/main.js"
-          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/manifest.json"
-          unzip -Z1 obsidian-viewer.zip | grep -Fx "obsidian-viewer/styles.css"
+          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/main.js"
+          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/manifest.json"
+          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/styles.css"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${{ github.ref_name }}"
-          main.js manifest.json styles.css obsidian-viewer.zip
+          main.js manifest.json styles.css obsidian-viewer-${{ github.ref_name }}.zip
           --title "Obsidian Viewer ${{ github.ref_name }}"
           --generate-notes

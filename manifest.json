@@ -1,7 +1,7 @@
 {
   "id": "obsidian-viewer",
   "name": "Obsidian Viewer",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "minAppVersion": "1.11.4",
   "description": "A cross-platform vault dashboard with secure GitHub sync, search, favorites, reading history, reader controls, and interactive quizzes.",
   "author": "Morgan Tian",

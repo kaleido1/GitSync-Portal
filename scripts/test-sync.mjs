@@ -37,7 +37,7 @@ const buffer = (value) => new TextEncoder().encode(value).buffer;
 assert.equal(await gitBlobSha(buffer("")), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
 assert.equal(await gitBlobSha(buffer("hello\n")), "ce013625030ba8dba906f756967f9e9ca394464a");
 
-const localFile = (path, sha) => ({ path, sha, file: { path } });
+const localFile = (path, sha, mtime = 1) => ({ path, sha, mtime, file: { path } });
 const remoteFile = (path, sha) => ({ path, sha, mode: "100644", size: 1 });
 const map = (entries) => new Map(entries);
 
@@ -124,7 +124,13 @@ const listings = {
     folders: [],
   },
   ".obsidian/plugins/obsidian-viewer": {
-    files: [".obsidian/plugins/obsidian-viewer/main.js", ".obsidian/plugins/obsidian-viewer/data.json"],
+    files: [
+      ".obsidian/plugins/obsidian-viewer/main.js",
+      ".obsidian/plugins/obsidian-viewer/data.json",
+      ".obsidian/plugins/obsidian-viewer/data.conflict-ios-20260811T132236Z.json",
+      ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+      ".obsidian/plugins/obsidian-viewer/sync-state.json",
+    ],
     folders: [],
   },
   folder: {
@@ -146,11 +152,9 @@ const fakePlugin = {
   settings: { syncIgnorePatterns: [
     ".DS_Store",
     ".obsidian/workspace*.json",
-    ".obsidian/community-plugins*.json",
-    ".obsidian/core-plugins*.json",
     ".obsidian/page-preview.json",
-    ".obsidian/plugins/obsidian-viewer/data.json",
-    ".obsidian/plugins/obsidian-git/data.json",
+    ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+    ".obsidian/plugins/obsidian-viewer/*.conflict-*",
     ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
     ".obsidian/plugins/*/manifest.conflict-*",
   ].join("\n") },
@@ -159,19 +163,155 @@ const service = new GitHubSyncService(fakePlugin, () => {});
 assert.deepEqual(await service.listAdapterFiles(), [
   ".gitignore",
   ".obsidian/app.json",
+  ".obsidian/community-plugins.json",
+  ".obsidian/core-plugins.json",
   ".obsidian/plugins/example-plugin/main.js",
   ".obsidian/plugins/example-plugin/manifest.json",
+  ".obsidian/plugins/obsidian-git/data.json",
   ".obsidian/plugins/obsidian-git/main.js",
+  ".obsidian/plugins/obsidian-viewer/data.json",
   ".obsidian/plugins/obsidian-viewer/main.js",
+  ".obsidian/plugins/obsidian-viewer/sync-state.json",
   "folder/.hidden.md",
   "folder/visible.md",
   "note.md",
 ]);
 const protectedList = await service.ensureSelfEnabled();
-assert.equal(protectedList, null);
+assert.equal(protectedList.path, ".obsidian/community-plugins.json");
 assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "obsidian-viewer"]);
 assert.equal(service.isSelfCoreFile(".obsidian/community-plugins.json"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/obsidian-viewer/main.js"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/dataview/main.js"), false);
+
+const retryPlugin = {
+  settings: { syncBranch: "main", syncRepository: "owner/repo", lastSyncedCommit: "", syncDeviceName: "test" },
+  getGitHubToken: () => "token",
+};
+const retryStatuses = [];
+const retryService = new GitHubSyncService(retryPlugin, (status) => retryStatuses.push(status.message));
+retryService.getRepository = async () => ({ default_branch: "main", full_name: "owner/repo" });
+let retryAttempts = 0;
+retryService.syncAttempt = async () => {
+  retryAttempts++;
+  if (retryAttempts === 1) {
+    const error = new Error("remote moved");
+    error.name = "RemoteChangedDuringSyncError";
+    throw error;
+  }
+  return { branch: "main", commitSha: "new", pulled: 0, pushed: 1, deleted: 0, conflicts: 0, changed: true };
+};
+const originalSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (callback) => {
+  callback();
+  return 0;
+};
+let retryResult;
+try {
+  retryResult = await retryService.sync();
+} finally {
+  globalThis.setTimeout = originalSetTimeout;
+}
+assert.equal(retryAttempts, 2);
+assert.equal(retryResult.commitSha, "new");
+assert.ok(retryStatuses.some((message) => message.includes("重新同步")));
+
+const remoteSnapshot = (commitSha, files = []) => ({
+  commitSha,
+  treeSha: `${commitSha}-tree`,
+  files: new Map(files.map((file) => [file.path, file])),
+});
+const rebaseService = new GitHubSyncService(retryPlugin, () => {});
+let refPatchAttempts = 0;
+let baseTrees = [];
+rebaseService.getHead = async () => remoteSnapshot("latest", [remoteFile("changed.md", "old"), remoteFile("other.md", "changed")]);
+rebaseService.api = async (_token, method, endpoint, body) => {
+  if (endpoint === "/git/trees") {
+    baseTrees.push(body.base_tree);
+    return { sha: `${body.base_tree}-new` };
+  }
+  if (endpoint === "/git/commits") return { sha: `${body.tree}-commit`, tree: { sha: body.tree } };
+  if (endpoint.startsWith("/git/refs/heads/")) {
+    refPatchAttempts++;
+    if (refPatchAttempts === 1) {
+      const error = new Error("remote moved");
+      error.name = "RemoteChangedDuringSyncError";
+      throw error;
+    }
+    return { object: { sha: body.sha } };
+  }
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+const rebaseCommit = await rebaseService.pushEntriesWithRemoteRetry(
+  "token",
+  "main",
+  remoteSnapshot("planned", [remoteFile("changed.md", "old")]),
+  [{ path: "changed.md", mode: "100644", type: "blob", sha: "local" }],
+);
+assert.equal(refPatchAttempts, 2);
+assert.deepEqual(baseTrees, ["planned-tree", "latest-tree"]);
+assert.equal(rebaseCommit, "latest-tree-new-commit");
+
+const pluginSettingsPlugin = {
+  settings: { ...retryPlugin.settings, lastSyncedCommit: "base" },
+  getGitHubToken: () => "token",
+  app: { vault: { adapter: { exists: async () => true } } },
+};
+const pluginSettingsService = new GitHubSyncService(pluginSettingsPlugin, () => {});
+pluginSettingsService.getHead = async () => remoteSnapshot("remote", [
+  remoteFile(".obsidian/plugins/example/data.json", "remote"),
+]);
+pluginSettingsService.tryGetSnapshot = async () => remoteSnapshot("base", [
+  remoteFile(".obsidian/plugins/example/data.json", "base"),
+]);
+pluginSettingsService.getLocalSnapshot = async () => map([
+  [".obsidian/plugins/example/data.json", localFile(".obsidian/plugins/example/data.json", "local")],
+]);
+pluginSettingsService.getRemoteModifiedAt = async () => 0;
+pluginSettingsService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
+pluginSettingsService.ensureSelfEnabled = async () => null;
+pluginSettingsService.readLocalBinary = async (path) => buffer(path);
+pluginSettingsService.api = async (_token, method, endpoint) => {
+  if (method === "POST" && endpoint === "/git/blobs") return { sha: "blob-sha" };
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+let pluginSettingsPushes = 0;
+pluginSettingsService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
+  pluginSettingsPushes++;
+  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/example/data.json"));
+  return "plugin-settings-upload";
+};
+const pluginSettingsResult = await pluginSettingsService.syncAttempt("token", "main");
+assert.equal(pluginSettingsPushes, 1);
+assert.equal(pluginSettingsResult.pushed, 2);
+assert.equal(pluginSettingsResult.commitSha, "plugin-settings-upload");
+
+const viewerStateService = new GitHubSyncService(pluginSettingsPlugin, () => {});
+viewerStateService.getHead = async () => remoteSnapshot("remote", [
+  remoteFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "remote"),
+]);
+viewerStateService.tryGetSnapshot = async () => remoteSnapshot("base", [
+  remoteFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "base"),
+]);
+viewerStateService.getLocalSnapshot = async () => map([
+  [".obsidian/plugins/obsidian-viewer/sync-state.json", localFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "local")],
+]);
+viewerStateService.getRemoteModifiedAt = async () => 0;
+viewerStateService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
+viewerStateService.ensureSelfEnabled = async () => null;
+viewerStateService.readLocalBinary = async (path) => buffer(path);
+viewerStateService.api = async (_token, method, endpoint) => {
+  if (method === "POST" && endpoint === "/git/blobs") return { sha: "blob-sha" };
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+let viewerStatePushes = 0;
+viewerStateService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
+  viewerStatePushes++;
+  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/obsidian-viewer/sync-state.json"));
+  return "state-upload";
+};
+const viewerStateResult = await viewerStateService.syncAttempt("token", "main");
+assert.equal(viewerStatePushes, 1);
+assert.equal(viewerStateResult.pushed, 2);
+assert.equal(viewerStateResult.commitSha, "state-upload");
 
 console.log("Git sync core tests passed.");

@@ -159,7 +159,7 @@ export class ObsidianViewerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("忽略路径")
-      .setDesc("每行一个 vault 相对路径或 glob。笔记、主题、CSS 和有意义的隐藏配置会正常同步；工作区布局、插件启用列表和同步器运行状态默认按设备保留。仅 `.git/` 和 `.trash/` 始终忽略。")
+      .setDesc("每行一个 vault 相对路径或 glob。笔记、主题、CSS、插件本体、插件启用列表和插件设置会正常同步；工作区布局、回收站、Git 内部库和同步器运行状态按设备保留。")
       .addTextArea((text) => text
         .setPlaceholder(".DS_Store\n.obsidian/workspace*.json")
         .setValue(this.plugin.settings.syncIgnorePatterns)

@@ -2,7 +2,10 @@ import {
   Notice,
   Platform,
   Plugin,
+  TAbstractFile,
   TFile,
+  TFolder,
+  normalizePath,
 } from "obsidian";
 import { ViewerDashboardView, VIEW_TYPE_VIEWER } from "./src/viewer-view";
 import { ObsidianViewerSettingTab } from "./src/settings";
@@ -10,7 +13,28 @@ import { registerQuizProcessors, QuizProgress } from "./src/quiz";
 import { GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
 
 const GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
+const SYNCED_VIEWER_STATE_PATH = ".obsidian/plugins/obsidian-viewer/sync-state.json";
+const LOCAL_SYNC_STATE_PATH = ".obsidian/plugins/obsidian-viewer/local-sync-state.json";
 const DEFAULT_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+  ".obsidian/plugins/obsidian-viewer/*.conflict-*",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/",
+].join("\n");
+const PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/",
+].join("\n");
+const DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/workspace*.json",
   ".obsidian/community-plugins*.json",
@@ -61,6 +85,18 @@ export interface ViewerSettings {
   lastSyncSummary: string;
 }
 
+interface ViewerSyncedState {
+  version: 1;
+  favorites: string[];
+  history: string[];
+}
+
+interface ViewerLocalSyncState {
+  lastSyncedCommit: string;
+  lastSyncAt: number;
+  lastSyncSummary: string;
+}
+
 const DEFAULT_SETTINGS: ViewerSettings = {
   homeNote: "",
   favorites: [],
@@ -97,7 +133,7 @@ export default class ObsidianViewerPlugin extends Plugin {
   syncStatus: GitHubSyncStatus = { stage: "idle", message: "尚未同步" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
     this.syncStatus = status;
-    this.refreshDashboard();
+    void this.refreshDashboard();
   });
 
   async onload(): Promise<void> {
@@ -158,12 +194,12 @@ export default class ObsidianViewerPlugin extends Plugin {
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.searchCache.delete(file.path);
-      if (file instanceof TFile) void this.removeMissingPath(file.path);
+      if (file instanceof TAbstractFile) void this.removeMissingPath(file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.searchCache.delete(oldPath);
-      if (file instanceof TFile) void this.renameTrackedPath(oldPath, file.path);
+      if (file instanceof TAbstractFile) void this.renameTrackedPath(oldPath, file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
@@ -193,6 +229,7 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const loaded = (await this.loadData()) as Partial<ViewerSettings> | null;
+    const localSyncState = await this.loadLocalSyncState(loaded);
     const loadedDeviceName = loaded?.syncDeviceName?.trim() ?? "";
     const syncDeviceNameAuto = typeof loaded?.syncDeviceNameAuto === "boolean"
       ? loaded.syncDeviceNameAuto
@@ -205,22 +242,30 @@ export default class ObsidianViewerPlugin extends Plugin {
       favorites: Array.isArray(loaded?.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded?.history) ? loaded.history : [],
       quizProgress: loaded?.quizProgress && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
+      lastSyncedCommit: localSyncState.lastSyncedCommit,
+      lastSyncAt: localSyncState.lastSyncAt,
+      lastSyncSummary: localSyncState.lastSyncSummary,
     };
     let migrated = loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
-    if ([PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
-    if (migrated) await this.saveData(this.settings);
+    if (await this.applySyncedViewerStateFromDisk()) migrated = true;
+    if (migrated) await this.savePluginData();
+    await this.saveLocalSyncState();
+    await this.saveSyncedViewerState();
     this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary };
   }
 
   async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
+    await this.savePluginData();
+    await this.saveLocalSyncState();
+    await this.saveSyncedViewerState();
     this.applyReaderSettings();
     this.configurePeriodicSync();
-    this.refreshDashboard();
+    await this.refreshDashboard();
   }
 
   getGitHubToken(): string {
@@ -241,14 +286,23 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   async syncNow(showNotice = true): Promise<void> {
+    if (this.githubSync.isRunning) {
+      if (showNotice) new Notice("同步已经在进行中。");
+      return;
+    }
     try {
+      await this.saveSettings();
       const result = await this.githubSync.sync();
       this.settings.lastSyncedCommit = result.commitSha;
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed
         ? `拉取 ${result.pulled}、上传 ${result.pushed}、删除 ${result.deleted}、冲突 ${result.conflicts}`
         : "本地与远端已经一致";
+      await this.saveLocalSyncState();
+      await this.loadSettings();
+      await this.applySyncedViewerStateFromDisk();
       await this.saveSettings();
+      await this.refreshDashboard();
       if (showNotice) new Notice(`GitHub 同步完成：${this.settings.lastSyncSummary}`);
     } catch (error) {
       if (showNotice) new Notice(error instanceof Error ? error.message : String(error), 8000);
@@ -290,13 +344,14 @@ export default class ObsidianViewerPlugin extends Plugin {
     return this.settings.favorites.includes(path);
   }
 
-  async toggleFavorite(file: TFile): Promise<void> {
+  async toggleFavorite(file: TFile | TFolder): Promise<void> {
     const isFavorite = this.isFavorite(file.path);
+    const name = file instanceof TFile ? file.basename : file.name || "根目录";
     this.settings.favorites = isFavorite
       ? this.settings.favorites.filter((path) => path !== file.path)
       : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
-    new Notice(isFavorite ? `已取消收藏：${file.basename}` : `已收藏：${file.basename}`);
+    new Notice(isFavorite ? `已取消收藏：${name}` : `已收藏：${name}`);
   }
 
   async setHomeNote(file: TFile): Promise<void> {
@@ -308,8 +363,9 @@ export default class ObsidianViewerPlugin extends Plugin {
   async recordOpen(file: TFile): Promise<void> {
     this.settings.history = [file.path, ...this.settings.history.filter((path) => path !== file.path)]
       .slice(0, this.settings.maxHistory);
-    await this.saveData(this.settings);
-    this.refreshDashboard();
+    await this.savePluginData();
+    await this.saveSyncedViewerState();
+    await this.refreshDashboard();
   }
 
   async clearHistory(): Promise<void> {
@@ -320,6 +376,11 @@ export default class ObsidianViewerPlugin extends Plugin {
   getMarkdownFile(path: string): TFile | null {
     const file = this.app.vault.getAbstractFileByPath(path);
     return file instanceof TFile && file.extension === "md" ? file : null;
+  }
+
+  getFileOrFolder(path: string): TFile | TFolder | null {
+    const item = this.app.vault.getAbstractFileByPath(path);
+    return item instanceof TFile || item instanceof TFolder ? item : null;
   }
 
   async searchFiles(query: string): Promise<TFile[]> {
@@ -345,7 +406,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     }));
 
     return results
-      .sort((a, b) => b.score - a.score || a.file.path.localeCompare(b.file.path))
+      .sort((a, b) => b.score - a.score || a.file.basename.localeCompare(b.file.basename) || a.file.path.localeCompare(b.file.path))
       .slice(0, 100)
       .map(({ file }) => file);
   }
@@ -359,15 +420,15 @@ export default class ObsidianViewerPlugin extends Plugin {
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     this.quizSaveTimer = window.setTimeout(() => {
       this.quizSaveTimer = null;
-      void this.saveData(this.settings);
+      void this.savePluginData();
     }, 250);
   }
 
-  private refreshDashboard(): void {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER).forEach((leaf) => {
+  private async refreshDashboard(): Promise<void> {
+    await Promise.all(this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER).map((leaf) => {
       const view = leaf.view;
-      if (view instanceof ViewerDashboardView) void view.render();
-    });
+      return view instanceof ViewerDashboardView ? view.render() : Promise.resolve();
+    }));
   }
 
   private scheduleSyncOnSave(): void {
@@ -375,6 +436,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
+      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
       void this.syncNow(false);
     }, 30_000);
   }
@@ -393,18 +455,144 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   private async removeMissingPath(path: string): Promise<void> {
-    this.settings.favorites = this.settings.favorites.filter((entry) => entry !== path);
-    this.settings.history = this.settings.history.filter((entry) => entry !== path);
+    const keep = (entry: string): boolean => entry !== path && !entry.startsWith(`${path}/`);
+    this.settings.favorites = this.settings.favorites.filter(keep);
+    this.settings.history = this.settings.history.filter(keep);
     if (this.settings.homeNote === path) this.settings.homeNote = "";
     await this.saveSettings();
   }
 
   private async renameTrackedPath(oldPath: string, newPath: string): Promise<void> {
-    const replace = (path: string): string => path === oldPath ? newPath : path;
+    const replace = (path: string): string => {
+      if (path === oldPath) return newPath;
+      if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`;
+      return path;
+    };
     this.settings.favorites = this.settings.favorites.map(replace);
     this.settings.history = this.settings.history.map(replace);
     if (this.settings.homeNote === oldPath) this.settings.homeNote = newPath;
     await this.saveSettings();
+  }
+
+  private async loadSyncedViewerState(): Promise<ViewerSyncedState | null> {
+    const path = syncedViewerStatePath(this.app.vault.configDir);
+    if (!await this.app.vault.adapter.exists(path)) return null;
+    try {
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerSyncedState>;
+      return {
+        version: 1,
+        favorites: normalizeTrackedPaths(parsed.favorites),
+        history: normalizeTrackedPaths(parsed.history),
+      };
+    } catch (error) {
+      new Notice(`Viewer 共享收藏/历史文件读取失败：${error instanceof Error ? error.message : String(error)}`, 8000);
+      return null;
+    }
+  }
+
+  private async applySyncedViewerStateFromDisk(): Promise<boolean> {
+    const syncedState = await this.loadSyncedViewerState();
+    if (!syncedState) return false;
+    this.settings.favorites = syncedState.favorites;
+    this.settings.history = syncedState.history.slice(0, this.settings.maxHistory);
+    return true;
+  }
+
+  private async saveSyncedViewerState(): Promise<void> {
+    const path = syncedViewerStatePath(this.app.vault.configDir);
+    const state: ViewerSyncedState = {
+      version: 1,
+      favorites: normalizeTrackedPaths(this.settings.favorites),
+      history: normalizeTrackedPaths(this.settings.history).slice(0, this.settings.maxHistory),
+    };
+    this.settings.favorites = state.favorites;
+    this.settings.history = state.history;
+    const content = `${JSON.stringify(state, null, 2)}\n`;
+    try {
+      if (await this.app.vault.adapter.exists(path) && await this.app.vault.adapter.read(path) === content) return;
+      await ensureAdapterParentFolders(this, path);
+      await this.app.vault.adapter.write(path, content);
+    } catch (error) {
+      new Notice(`Viewer 共享收藏/历史文件保存失败：${error instanceof Error ? error.message : String(error)}`, 8000);
+    }
+  }
+
+  private async loadLocalSyncState(loaded: Partial<ViewerSettings> | null): Promise<ViewerLocalSyncState> {
+    const path = localSyncStatePath(this.app.vault.configDir);
+    const fallback: ViewerLocalSyncState = {
+      lastSyncedCommit: typeof loaded?.lastSyncedCommit === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
+      lastSyncAt: typeof loaded?.lastSyncAt === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
+      lastSyncSummary: typeof loaded?.lastSyncSummary === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary,
+    };
+    if (!await this.app.vault.adapter.exists(path)) return fallback;
+    try {
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerLocalSyncState>;
+      return {
+        lastSyncedCommit: typeof parsed.lastSyncedCommit === "string" ? parsed.lastSyncedCommit : fallback.lastSyncedCommit,
+        lastSyncAt: typeof parsed.lastSyncAt === "number" ? parsed.lastSyncAt : fallback.lastSyncAt,
+        lastSyncSummary: typeof parsed.lastSyncSummary === "string" ? parsed.lastSyncSummary : fallback.lastSyncSummary,
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
+  private async saveLocalSyncState(): Promise<void> {
+    const path = localSyncStatePath(this.app.vault.configDir);
+    const state: ViewerLocalSyncState = {
+      lastSyncedCommit: this.settings.lastSyncedCommit,
+      lastSyncAt: this.settings.lastSyncAt,
+      lastSyncSummary: this.settings.lastSyncSummary,
+    };
+    await ensureAdapterParentFolders(this, path);
+    await this.app.vault.adapter.write(path, `${JSON.stringify(state, null, 2)}\n`);
+  }
+
+  private async savePluginData(): Promise<void> {
+    const syncedSettings: Partial<ViewerSettings> = { ...this.settings };
+    delete syncedSettings.favorites;
+    delete syncedSettings.history;
+    delete syncedSettings.lastSyncedCommit;
+    delete syncedSettings.lastSyncAt;
+    delete syncedSettings.lastSyncSummary;
+    await this.saveData(syncedSettings);
+  }
+}
+
+function syncedViewerStatePath(configDir: string): string {
+  return normalizePath(configDir ? `${configDir}/plugins/obsidian-viewer/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
+}
+
+function localSyncStatePath(configDir: string): string {
+  return normalizePath(configDir ? `${configDir}/plugins/obsidian-viewer/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+}
+
+function normalizeTrackedPaths(paths: unknown): string[] {
+  if (!Array.isArray(paths)) return [];
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const path of paths) {
+    if (typeof path !== "string") continue;
+    const normalized = normalizePath(path.trim());
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
+}
+
+async function ensureAdapterParentFolders(plugin: ObsidianViewerPlugin, path: string): Promise<void> {
+  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  if (!parent) return;
+  let current = "";
+  for (const segment of parent.split("/")) {
+    current = current ? `${current}/${segment}` : segment;
+    if (await plugin.app.vault.adapter.exists(current)) continue;
+    try {
+      await plugin.app.vault.createFolder(current);
+    } catch (error) {
+      if (!await plugin.app.vault.adapter.exists(current)) throw error;
+    }
   }
 }
 

@@ -330,19 +330,85 @@
   align-items: center;
   gap: 8px;
   margin: 14px 0 8px;
-  padding: 0 10px;
+  min-height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--input-radius);
+  border-radius: 999px;
   background: var(--background-modifier-form-field);
+  cursor: text;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.ov-search-box:focus-within,
+.ov-search-box:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+  background: var(--background-primary);
 }
 
 .ov-search-box input {
   flex: 1;
   min-width: 0;
+  height: 36px;
   padding-inline: 0;
+  border: 0;
+  border-radius: inherit;
+  outline: 0;
+  box-shadow: none !important;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ov-directory-controls,
+.ov-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ov-directory-controls {
+  margin: 10px 0 6px;
+}
+
+.ov-directory-location {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.ov-directory-location span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-breadcrumbs {
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.ov-breadcrumbs button {
+  min-height: 28px;
+  padding: 3px 7px;
   border: 0;
   box-shadow: none;
   background: transparent;
+  color: var(--text-muted);
+}
+
+.ov-breadcrumbs button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .ov-outline {
