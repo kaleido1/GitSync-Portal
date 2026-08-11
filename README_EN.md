@@ -33,6 +33,7 @@ A read-only Obsidian Vault viewer for Android, built with Kotlin, Jetpack Compos
 - Commit SHA checks that skip downloads when the repository has not changed
 - Incremental synchronization of files changed between commits
 - Full ZIP fallback when an incremental comparison is unavailable
+- Safe mirror deletion: GitHub-removed tracked files move to `.sync-trash/<timestamp>/`, while local-only files are preserved
 - Sync stage, changed-file count, last-sync time, errors, and retry controls
 
 ### Markdown and Obsidian Compatibility
@@ -46,6 +47,7 @@ A read-only Obsidian Vault viewer for Android, built with Kotlin, Jetpack Compos
 - Embedded notes through `![[Note]]`
 - Local Vault images and remote HTTPS images
 - YAML Frontmatter/Properties
+- Structured Properties rows, tag pills, and clickable note and attachment links
 - Obsidian Callouts, including custom types and `[!TYPE]+` / `[!TYPE]-`
 - Mermaid 11.16.1 diagrams, bundled for offline use
 - KaTeX 0.18.2 inline and display math, bundled for offline use

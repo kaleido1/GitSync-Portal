@@ -2,6 +2,19 @@
 
 All notable changes to Obsidian Viewer are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Safe GitHub mirror deletion with a persistent tracked-file manifest.
+- GitHub-removed files are moved to timestamped `.sync-trash` folders instead of being permanently deleted.
+- Local-only Vault files are preserved during synchronization.
+- Structured, more readable Properties with tag pills and clickable attachment links.
+
+### Fixed
+
+- Numeric Dataview sorting, including `SORT number(field)`, now uses numeric order.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added

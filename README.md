@@ -23,6 +23,7 @@
 - 收藏笔记、完整阅读历史与一键清空
 - 自定义首页及文件、收藏、历史、同步快捷入口
 - 同步阶段、写入文件数、最后同步时间、错误原因与重试
+- GitHub 安全镜像删除：已跟踪文件从 GitHub 删除后移入本地 `.sync-trash/时间戳/`，本地独有文件保留
 - 支持笔记跳转历史和 Android 系统返回键
 
 ### Markdown 与 Obsidian 语法
@@ -39,6 +40,7 @@
 - `![[图片.png]]` 和标准 Markdown 图片
 - `![[笔记]]` 笔记嵌入
 - YAML Frontmatter/Properties
+- 结构化 Properties 行式布局、标签胶囊，以及可点击的笔记和附件链接
 - Obsidian Callout（Note、Tip、Warning、Danger、Success 等）
 - Mermaid 11.16.1 图表（离线）
 - KaTeX 0.18.2 行内/块级数学公式（离线）

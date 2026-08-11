@@ -182,7 +182,7 @@ private fun ObsidianViewerApp(context: Context) {
                 val time = result.syncedAt.atZone(ZoneId.systemDefault())
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                 syncStatus = if (result.changed) {
-                    "同步完成：${result.branch}，更新 ${result.copiedFiles} 个文件，$time"
+                    "同步完成：${result.branch}，写入 ${result.copiedFiles} 个文件，回收 ${result.trashedFiles} 个文件，$time"
                 } else {
                     "已是最新版本：${result.branch} · ${result.commitSha.take(7)}，$time"
                 }
