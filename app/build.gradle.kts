@@ -49,5 +49,6 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.29.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.29.0")
     implementation("org.commonmark:commonmark-ext-task-list-items:0.29.0")
+    testImplementation(kotlin("test-junit"))
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

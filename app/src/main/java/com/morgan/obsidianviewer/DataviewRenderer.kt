@@ -84,8 +84,9 @@ object DataviewRenderer {
 
     private fun sortRows(rows: List<Record>, sort: String?): List<Record> {
         if (sort.isNullOrBlank()) return rows
-        val key = sort.substringBeforeLast(' ').takeIf { sort.endsWith(" ASC", true) || sort.endsWith(" DESC", true) } ?: sort
-        val result = rows.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.get(key) })
+        val expression = sort.substringBeforeLast(' ').takeIf { sort.endsWith(" ASC", true) || sort.endsWith(" DESC", true) } ?: sort
+        val key = dataviewSortKey(expression)
+        val result = rows.sortedWith { left, right -> compareDataviewValues(left.get(key), right.get(key)) }
         return if (sort.endsWith(" DESC", true)) result.reversed() else result
     }
 
@@ -124,3 +125,21 @@ object DataviewRenderer {
     private val COMPARISON = Regex("([\\w.-]+)\\s*(==|=|!=|>=|<=|>|<)\\s*(.+)")
     private val TASK_LINE = Regex("(?m)^\\s*[-*] \\[([ xX])](.+)$")
 }
+
+internal fun compareDataviewValues(left: String, right: String): Int {
+    val leftNumber = left.trim().toDoubleOrNull()
+    val rightNumber = right.trim().toDoubleOrNull()
+    return if (leftNumber != null && rightNumber != null) {
+        leftNumber.compareTo(rightNumber)
+    } else {
+        left.compareTo(right, ignoreCase = true)
+    }
+}
+
+internal fun dataviewSortKey(expression: String): String =
+    Regex("number\\(([^)]+)\\)", RegexOption.IGNORE_CASE)
+        .matchEntire(expression.trim())
+        ?.groupValues
+        ?.get(1)
+        ?.trim()
+        ?: expression.trim()

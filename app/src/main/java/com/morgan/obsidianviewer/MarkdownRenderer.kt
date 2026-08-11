@@ -44,9 +44,7 @@ object MarkdownRenderer {
         body = addHeadingIds(body)
         body = addBlockIds(body)
         body = decorateCallouts(body)
-        val frontmatterHtml = frontmatter?.let {
-            "<details class=\"frontmatter\"><summary>Properties</summary><pre>${escapeHtml(it)}</pre></details>"
-        }.orEmpty()
+        val frontmatterHtml = frontmatter?.let { renderFrontmatter(it, note, index) }.orEmpty()
         return RenderedNote(
             html = htmlDocument(frontmatterHtml + body, dark, preferences, index.snippetCss, note.file.relativePath),
             anchor = requestedAnchor?.let(Uri::decode),
@@ -63,6 +61,31 @@ object MarkdownRenderer {
 
     private fun normalizeObsidianEmphasis(markdown: String): String = STRONG_WITH_TRAILING_SPACE.replace(markdown) {
         "**${it.groupValues[1]}** "
+    }
+
+    private fun renderFrontmatter(frontmatter: String, note: VaultNote, index: VaultIndex): String {
+        val content = buildString {
+            var cursor = 0
+            WIKI_LINK.findAll(frontmatter).forEach { match ->
+                append(escapeHtml(frontmatter.substring(cursor, match.range.first)))
+                val raw = match.groupValues[1]
+                val target = raw.substringBefore('|').trim()
+                val label = raw.substringAfter('|', target).trim()
+                val asset = index.findAsset(target)
+                val href = if (asset != null) {
+                    "https://vault.local/asset?path=${encode(asset.relativePath)}"
+                } else {
+                    val heading = target.substringAfter('#', "")
+                    val noteTarget = target.substringBefore('#').ifBlank { note.file.relativePath }
+                    "https://vault.local/open?path=${encode(noteTarget)}" +
+                        heading.takeIf(String::isNotEmpty)?.let { "&heading=${encode(it)}" }.orEmpty()
+                }
+                append("<a href=\"${escapeAttribute(href)}\">${escapeHtml(label)}</a>")
+                cursor = match.range.last + 1
+            }
+            append(escapeHtml(frontmatter.substring(cursor)))
+        }
+        return "<details class=\"frontmatter\"><summary>Properties</summary><pre>$content</pre></details>"
     }
 
     private fun expandEmbeds(

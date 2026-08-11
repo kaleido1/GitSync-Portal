@@ -842,6 +842,17 @@ private class VaultWebViewClient(
             onWikiLink(uri.getQueryParameter("path").orEmpty(), uri.getQueryParameter("heading"))
             return true
         }
+        if (uri.host == "vault.local" && uri.path == "/asset") {
+            val asset = index.findAsset(uri.getQueryParameter("path").orEmpty()) ?: return true
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(asset.uri, asset.mimeType ?: "application/octet-stream")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                )
+            }
+            return true
+        }
         if (uri.scheme == "obsidian" && uri.host == "note") {
             onWikiLink(uri.getQueryParameter("path").orEmpty(), uri.getQueryParameter("heading"))
             return true
