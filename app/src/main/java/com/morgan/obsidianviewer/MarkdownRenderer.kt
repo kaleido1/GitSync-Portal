@@ -64,10 +64,40 @@ object MarkdownRenderer {
     }
 
     private fun renderFrontmatter(frontmatter: String, note: VaultNote, index: VaultIndex): String {
-        val content = buildString {
+        val properties = mutableListOf<Pair<String, MutableList<String>>>()
+        frontmatter.lines().forEach { line ->
+            val trimmed = line.trim()
+            when {
+                line.isNotBlank() && !line.first().isWhitespace() && ':' in line -> {
+                    val key = line.substringBefore(':').trim()
+                    val value = line.substringAfter(':').trim()
+                    properties += key to mutableListOf<String>().apply { if (value.isNotEmpty()) add(value) }
+                }
+                trimmed.startsWith("- ") && properties.isNotEmpty() -> properties.last().second += trimmed.removePrefix("- ").trim()
+            }
+        }
+        val rows = properties.joinToString("") { (key, values) ->
+            val icon = when {
+                key.equals("date", true) || key.endsWith("date", true) -> "&#128197;"
+                key.equals("tags", true) || key.equals("tag", true) -> "&#127991;"
+                key.equals("week", true) || values.singleOrNull()?.trim()?.toDoubleOrNull() != null -> "#"
+                key.equals("slides", true) -> "&#128196;"
+                else -> "&#9776;"
+            }
+            val renderedValues = values.ifEmpty { listOf("") }.joinToString("<br>") { value ->
+                val rendered = renderPropertyValue(value.trim().removeSurrounding("\"").removeSurrounding("'"), note, index)
+                if (key.equals("tags", true) || key.equals("tag", true)) "<span class=\"property-tag\">$rendered</span>" else rendered
+            }
+            "<div class=\"property-row\"><span class=\"property-icon\">$icon</span>" +
+                "<span class=\"property-key\">${escapeHtml(key)}</span><span class=\"property-value\">$renderedValues</span></div>"
+        }
+        return "<section class=\"frontmatter\"><h3>Properties</h3><div class=\"property-list\">$rows</div></section>"
+    }
+
+    private fun renderPropertyValue(value: String, note: VaultNote, index: VaultIndex): String = buildString {
             var cursor = 0
-            WIKI_LINK.findAll(frontmatter).forEach { match ->
-                append(escapeHtml(frontmatter.substring(cursor, match.range.first)))
+            WIKI_LINK.findAll(value).forEach { match ->
+                append(escapeHtml(value.substring(cursor, match.range.first)))
                 val raw = match.groupValues[1]
                 val target = raw.substringBefore('|').trim()
                 val label = raw.substringAfter('|', target).trim()
@@ -83,9 +113,7 @@ object MarkdownRenderer {
                 append("<a href=\"${escapeAttribute(href)}\">${escapeHtml(label)}</a>")
                 cursor = match.range.last + 1
             }
-            append(escapeHtml(frontmatter.substring(cursor)))
-        }
-        return "<details class=\"frontmatter\"><summary>Properties</summary><pre>$content</pre></details>"
+            append(escapeHtml(value.substring(cursor)))
     }
 
     private fun expandEmbeds(
@@ -206,7 +234,7 @@ object MarkdownRenderer {
 <link rel="stylesheet" href="https://app.local/assets/highlight/$highlightTheme">
 <link rel="stylesheet" href="https://app.local/app/quizzable.css">
 <style>
-:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px ${preferences.horizontalPadding}px 90px;background:$background;color:$foreground;font:${preferences.fontSize}px/${preferences.lineHeight} system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:1.25em 0 .5em;scroll-margin-top:12px}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0;background:transparent}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{padding:10px 14px;border:1px solid $border;border-radius:8px;color:$secondary}.frontmatter pre{white-space:pre-wrap;background:transparent;padding:8px 0;margin:0}.callout{display:block;margin:1em 0;padding:.65em 1em;border:1px solid $border;border-left:5px solid #8b6fd6;border-radius:8px;color:$secondary;background:$code}.callout-title{font-weight:750;color:$foreground;margin-bottom:.35em}.callout p:first-of-type{margin-top:.25em}.callout.important,.callout.note,.callout.notes,.callout.info{border-left-color:#8b6fd6}.callout.warning,.callout.caution{border-left-color:#f59e0b}.callout.danger,.callout.failure,.callout.bug{border-left-color:#ef4444}.callout.success,.callout.tip{border-left-color:#22c55e}.block-id{display:block;position:relative;top:-12px;visibility:hidden}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}.mermaid{overflow:auto;text-align:center;margin:1.2em 0}#toc-toggle{position:fixed;right:18px;bottom:22px;z-index:20;border:0;border-radius:999px;padding:11px 15px;background:#8b6fd6;color:white;font-weight:700;box-shadow:0 4px 18px #0006}.render-error{padding:10px;border:1px solid #ef4444;border-radius:8px;color:#ef4444}
+:root{color-scheme:${if (dark) "dark" else "light"}}*{box-sizing:border-box}body{margin:0;padding:8px ${preferences.horizontalPadding}px 90px;background:$background;color:$foreground;font:${preferences.fontSize}px/${preferences.lineHeight} system-ui,sans-serif;overflow-wrap:anywhere}h1,h2,h3,h4,h5,h6{line-height:1.3;margin:1.25em 0 .5em;scroll-margin-top:12px}h1{font-size:2em}h2{font-size:1.55em;border-bottom:1px solid $border;padding-bottom:.25em}h3{font-size:1.25em}a{color:#8b6fd6}blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid #8b6fd6;color:$secondary;background:$code}pre{overflow:auto;padding:14px;border-radius:10px;background:$code}code{font-family:ui-monospace,monospace;background:$code;padding:.12em .3em;border-radius:4px}pre code{padding:0;background:transparent}table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border:1px solid $border;padding:7px 10px}img{max-width:100%;height:auto;border-radius:8px}hr{border:0;border-top:1px solid $border}.frontmatter{margin:.8em 0 1.2em;padding:2px 4px;color:$secondary}.frontmatter h3{margin:.4em 0 .7em;color:$foreground;font-size:1em}.property-list{display:grid;gap:2px}.property-row{display:grid;grid-template-columns:24px minmax(92px,28%) 1fr;align-items:start;min-height:38px;padding:7px 6px;border-radius:7px}.property-row:hover{background:$code}.property-icon{color:$secondary;text-align:center;font-size:.9em}.property-key{color:$secondary;padding:0 10px}.property-value{min-width:0;color:$foreground}.property-value a{display:inline-block;margin-bottom:4px}.property-tag{display:inline-block;padding:2px 10px;border-radius:999px;background:#8b6fd626;color:#a98bea}.callout{display:block;margin:1em 0;padding:.65em 1em;border:1px solid $border;border-left:5px solid #8b6fd6;border-radius:8px;color:$secondary;background:$code}.callout-title{font-weight:750;color:$foreground;margin-bottom:.35em}.callout p:first-of-type{margin-top:.25em}.callout.important,.callout.note,.callout.notes,.callout.info{border-left-color:#8b6fd6}.callout.warning,.callout.caution{border-left-color:#f59e0b}.callout.danger,.callout.failure,.callout.bug{border-left-color:#ef4444}.callout.success,.callout.tip{border-left-color:#22c55e}.block-id{display:block;position:relative;top:-12px;visibility:hidden}input[type=checkbox]{transform:scale(1.15);margin-right:.5em}.mermaid{overflow:auto;text-align:center;margin:1.2em 0}#toc-toggle{position:fixed;right:18px;bottom:22px;z-index:20;border:0;border-radius:999px;padding:11px 15px;background:#8b6fd6;color:white;font-weight:700;box-shadow:0 4px 18px #0006}.render-error{padding:10px;border:1px solid #ef4444;border-radius:8px;color:#ef4444}
 </style><style id="vault-snippets">$safeSnippets</style><style id="toc-layout">
 #toc-panel{position:fixed!important;left:4vw!important;right:4vw!important;bottom:76px!important;z-index:19!important;width:auto!important;height:7cm!important;min-height:7cm!important;max-width:none!important;max-height:7cm!important;overflow-y:auto!important;padding:18px 14px!important;background:$background!important;border:1px solid $border!important;border-radius:18px!important;box-shadow:0 8px 30px #0009!important;display:none!important}#toc-panel.open{display:block!important}#toc-panel a{display:block!important;padding:12px 10px!important;min-height:48px!important;text-decoration:none!important;border-radius:9px!important;color:$foreground!important;font-size:1.05em!important;line-height:1.35!important}#toc-panel a.active{background:$code!important;color:#9c7de8!important}
 </style></head><body>$body
