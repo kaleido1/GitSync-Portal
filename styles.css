@@ -25,6 +25,7 @@
   --ov-surface-strong: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
   --ov-list-surface: color-mix(in srgb, var(--text-normal) 5.5%, var(--background-primary));
   --ov-list-hover: color-mix(in srgb, var(--text-normal) 9%, var(--background-primary));
+  font-size: var(--font-ui-small);
   padding: 10px 10px 28px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -85,7 +86,8 @@
 
 .ov-dashboard-header h2 {
   overflow: hidden;
-  font-size: var(--font-ui-medium);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -330,6 +332,7 @@
   border-radius: 18px;
   box-shadow: none !important;
   white-space: nowrap;
+  font-size: var(--font-ui-smaller);
 }
 
 .ov-sync-primary svg,
@@ -430,7 +433,7 @@
 .ov-section-title,
 .ov-section-heading h3 {
   margin: 16px 2px 7px;
-  font-size: var(--font-ui-medium);
+  font-size: var(--font-ui-small);
 }
 
 .ov-section-heading {
@@ -520,6 +523,19 @@
 .ov-file-labels strong,
 .ov-file-labels small {
   display: block;
+}
+
+.ov-file-labels strong,
+.ov-active-note-labels strong,
+.ov-sync-card-header strong,
+.ov-home-card h3 {
+  font-size: var(--font-ui-small);
+}
+
+.ov-dashboard button,
+.ov-dashboard input,
+.ov-dashboard select {
+  font-size: var(--font-ui-smaller);
 }
 
 .ov-file-row > .clickable-icon {
