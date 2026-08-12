@@ -2,7 +2,7 @@
 
 GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.1.3`
+Current version: `2.1.4`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
@@ -45,7 +45,7 @@ Change the language under **Obsidian → Settings → GitSync Portal → Languag
 
 ## Installation
 
-Download [gitsync-portal-2.1.3.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.3/gitsync-portal-2.1.3.zip) and extract it into your vault's plugin directory:
+Download [gitsync-portal-2.1.4.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.4/gitsync-portal-2.1.4.zip) and extract it into your vault's plugin directory:
 
 ```text
 <Vault>/.obsidian/plugins/

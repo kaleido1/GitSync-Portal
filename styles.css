@@ -820,3 +820,60 @@
     width: 100%;
   }
 }
+
+/* Keep the phone sidebar as compact as the 2.0.1 dashboard. Explicit pixel
+   sizes avoid larger mobile theme values for --font-ui-small. */
+.is-mobile .ov-dashboard {
+  font-size: 12px;
+}
+
+.is-mobile .ov-dashboard-header h2,
+.is-mobile .ov-section-title,
+.is-mobile .ov-section-heading h3,
+.is-mobile .ov-file-labels strong,
+.is-mobile .ov-active-note-labels strong,
+.is-mobile .ov-sync-card-header strong,
+.is-mobile .ov-home-card h3 {
+  font-size: 13px;
+}
+
+.is-mobile .ov-dashboard-header small,
+.is-mobile .ov-active-note-labels small,
+.is-mobile .ov-file-labels small,
+.is-mobile .ov-sync-message,
+.is-mobile .ov-dashboard button,
+.is-mobile .ov-dashboard input,
+.is-mobile .ov-dashboard select {
+  font-size: 11px;
+}
+
+.is-mobile .ov-file-row,
+.is-mobile .ov-file-open {
+  min-height: 0;
+}
+
+.is-mobile .ov-file-open {
+  padding: 8px 9px;
+}
+
+.is-mobile .ov-search-box {
+  min-height: 38px;
+  padding-inline: 12px;
+}
+
+.is-mobile .ov-search-box input {
+  height: 36px;
+}
+
+.is-mobile .ov-sync-primary,
+.is-mobile .ov-tonal-button,
+.is-mobile .ov-home-card .mod-cta {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+.is-mobile .ov-active-card,
+.is-mobile .ov-home-card,
+.is-mobile .ov-sync-card {
+  padding: 10px;
+}
