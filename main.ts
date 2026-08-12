@@ -434,7 +434,6 @@ export default class GitSyncPortalPlugin extends Plugin {
       .slice(0, this.settings.maxHistory);
     await this.savePluginData();
     await this.saveSyncedViewerState();
-    await this.refreshDashboard();
   }
 
   async clearHistory(): Promise<void> {

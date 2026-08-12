@@ -30,6 +30,7 @@ var VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
 var LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 var LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 var HISTORY_BATCH_SIZE = 40;
+var DASHBOARD_SCROLL_STATE_KEY_PREFIX = "gitsync-portal:dashboard-scroll:";
 var savedDashboardScrollTop = 0;
 var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
@@ -45,6 +46,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     this.folderBackStack = [];
     this.folderForwardStack = [];
     this.historyVisibleCount = HISTORY_BATCH_SIZE;
+    this.scrollSaveTimer = null;
+    this.scrollRestoreFrame = null;
+    savedDashboardScrollTop = this.loadSavedScrollTop();
   }
   getViewType() {
     return VIEW_TYPE_GITSYNC_PORTAL;
@@ -57,14 +61,29 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   async onOpen() {
     this.contentEl.addClass("ov-dashboard");
-    this.registerDomEvent(this.contentEl, "scroll", () => {
-      savedDashboardScrollTop = this.contentEl.scrollTop;
-    }, { passive: true });
+    this.getScrollContainers().forEach((container) => {
+      this.registerDomEvent(container, "scroll", () => {
+        if (container.scrollTop <= 0) return;
+        savedDashboardScrollTop = container.scrollTop;
+        this.scheduleScrollSave();
+      }, { passive: true });
+    });
+    if (typeof IntersectionObserver !== "undefined") {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) this.scheduleScrollRestore();
+      });
+      observer.observe(this.contentEl);
+      this.register(() => observer.disconnect());
+    }
     await this.render();
   }
   async onClose() {
     if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
     if (this.syncUpdateFrame !== null) window.cancelAnimationFrame(this.syncUpdateFrame);
+    if (this.scrollSaveTimer !== null) window.clearTimeout(this.scrollSaveTimer);
+    if (this.scrollRestoreFrame !== null) window.cancelAnimationFrame(this.scrollRestoreFrame);
+    this.captureScrollTop();
+    this.saveScrollTop();
   }
   async render() {
     const root = this.contentEl;
@@ -93,13 +112,63 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   restoreScrollTop(scrollTop) {
     savedDashboardScrollTop = scrollTop;
-    this.contentEl.scrollTop = scrollTop;
-    window.requestAnimationFrame(() => {
-      this.contentEl.scrollTop = savedDashboardScrollTop;
-      window.requestAnimationFrame(() => {
-        this.contentEl.scrollTop = savedDashboardScrollTop;
-      });
+    this.applyScrollTop(scrollTop);
+    this.scheduleScrollRestore();
+  }
+  captureScrollTop() {
+    for (const element of this.getScrollContainers()) {
+      if (element.scrollTop > 0) {
+        savedDashboardScrollTop = element.scrollTop;
+        return;
+      }
+    }
+  }
+  applyScrollTop(scrollTop) {
+    this.getScrollContainers().forEach((element) => {
+      element.scrollTop = scrollTop;
     });
+  }
+  getScrollContainers() {
+    const containers = [];
+    let element = this.contentEl;
+    while (element && element !== document.body) {
+      const overflowY = window.getComputedStyle(element).overflowY;
+      if (element === this.contentEl || overflowY === "auto" || overflowY === "scroll") containers.push(element);
+      if (element.classList.contains("workspace-drawer")) break;
+      element = element.parentElement;
+    }
+    return containers;
+  }
+  scheduleScrollRestore() {
+    if (this.scrollRestoreFrame !== null) window.cancelAnimationFrame(this.scrollRestoreFrame);
+    this.scrollRestoreFrame = window.requestAnimationFrame(() => {
+      this.scrollRestoreFrame = null;
+      this.applyScrollTop(savedDashboardScrollTop);
+    });
+  }
+  scrollStateKey() {
+    return `${DASHBOARD_SCROLL_STATE_KEY_PREFIX}${this.app.vault.getName()}`;
+  }
+  loadSavedScrollTop() {
+    try {
+      const value = Number(window.localStorage.getItem(this.scrollStateKey()));
+      return Number.isFinite(value) && value >= 0 ? value : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  scheduleScrollSave() {
+    if (this.scrollSaveTimer !== null) window.clearTimeout(this.scrollSaveTimer);
+    this.scrollSaveTimer = window.setTimeout(() => {
+      this.scrollSaveTimer = null;
+      this.saveScrollTop();
+    }, 150);
+  }
+  saveScrollTop() {
+    try {
+      window.localStorage.setItem(this.scrollStateKey(), String(savedDashboardScrollTop));
+    } catch (e) {
+    }
   }
   renderTabs(root) {
     const tabs = root.createDiv({ cls: "ov-tabs", attr: { role: "tablist" } });
@@ -3567,7 +3636,6 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.settings.history = [file.path, ...this.settings.history.filter((path) => path !== file.path)].slice(0, this.settings.maxHistory);
     await this.savePluginData();
     await this.saveSyncedViewerState();
-    await this.refreshDashboard();
   }
   async clearHistory() {
     this.settings.history = [];

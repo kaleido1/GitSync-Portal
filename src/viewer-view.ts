@@ -7,6 +7,7 @@ export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
 const HISTORY_BATCH_SIZE = 40;
+const DASHBOARD_SCROLL_STATE_KEY_PREFIX = "gitsync-portal:dashboard-scroll:";
 let savedDashboardScrollTop = 0;
 
 export class GitSyncPortalDashboardView extends ItemView {
@@ -20,9 +21,12 @@ export class GitSyncPortalDashboardView extends ItemView {
   private folderBackStack: string[] = [];
   private folderForwardStack: string[] = [];
   private historyVisibleCount = HISTORY_BATCH_SIZE;
+  private scrollSaveTimer: number | null = null;
+  private scrollRestoreFrame: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: GitSyncPortalPlugin) {
     super(leaf);
+    savedDashboardScrollTop = this.loadSavedScrollTop();
   }
 
   getViewType(): string {
@@ -39,15 +43,32 @@ export class GitSyncPortalDashboardView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.contentEl.addClass("ov-dashboard");
-    this.registerDomEvent(this.contentEl, "scroll", () => {
-      savedDashboardScrollTop = this.contentEl.scrollTop;
-    }, { passive: true });
+    // On mobile, the drawer can make an ancestor (not contentEl itself) the
+    // scrolling element, so subscribe to every possible Portal scroll parent.
+    this.getScrollContainers().forEach((container) => {
+      this.registerDomEvent(container, "scroll", () => {
+        if (container.scrollTop <= 0) return;
+        savedDashboardScrollTop = container.scrollTop;
+        this.scheduleScrollSave();
+      }, { passive: true });
+    });
+    if (typeof IntersectionObserver !== "undefined") {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) this.scheduleScrollRestore();
+      });
+      observer.observe(this.contentEl);
+      this.register(() => observer.disconnect());
+    }
     await this.render();
   }
 
   async onClose(): Promise<void> {
     if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
     if (this.syncUpdateFrame !== null) window.cancelAnimationFrame(this.syncUpdateFrame);
+    if (this.scrollSaveTimer !== null) window.clearTimeout(this.scrollSaveTimer);
+    if (this.scrollRestoreFrame !== null) window.cancelAnimationFrame(this.scrollRestoreFrame);
+    this.captureScrollTop();
+    this.saveScrollTop();
   }
 
   async render(): Promise<void> {
@@ -81,13 +102,72 @@ export class GitSyncPortalDashboardView extends ItemView {
 
   private restoreScrollTop(scrollTop: number): void {
     savedDashboardScrollTop = scrollTop;
-    this.contentEl.scrollTop = scrollTop;
-    window.requestAnimationFrame(() => {
-      this.contentEl.scrollTop = savedDashboardScrollTop;
-      window.requestAnimationFrame(() => {
-        this.contentEl.scrollTop = savedDashboardScrollTop;
-      });
+    this.applyScrollTop(scrollTop);
+    this.scheduleScrollRestore();
+  }
+
+  private captureScrollTop(): void {
+    for (const element of this.getScrollContainers()) {
+      if (element.scrollTop > 0) {
+        savedDashboardScrollTop = element.scrollTop;
+        return;
+      }
+    }
+  }
+
+  private applyScrollTop(scrollTop: number): void {
+    this.getScrollContainers().forEach((element) => {
+      element.scrollTop = scrollTop;
     });
+  }
+
+  private getScrollContainers(): HTMLElement[] {
+    const containers: HTMLElement[] = [];
+    let element: HTMLElement | null = this.contentEl;
+    while (element && element !== document.body) {
+      const overflowY = window.getComputedStyle(element).overflowY;
+      if (element === this.contentEl || overflowY === "auto" || overflowY === "scroll") containers.push(element);
+      if (element.classList.contains("workspace-drawer")) break;
+      element = element.parentElement;
+    }
+    return containers;
+  }
+
+  private scheduleScrollRestore(): void {
+    if (this.scrollRestoreFrame !== null) window.cancelAnimationFrame(this.scrollRestoreFrame);
+    this.scrollRestoreFrame = window.requestAnimationFrame(() => {
+      this.scrollRestoreFrame = null;
+      this.applyScrollTop(savedDashboardScrollTop);
+    });
+  }
+
+  private scrollStateKey(): string {
+    return `${DASHBOARD_SCROLL_STATE_KEY_PREFIX}${this.app.vault.getName()}`;
+  }
+
+  private loadSavedScrollTop(): number {
+    try {
+      const value = Number(window.localStorage.getItem(this.scrollStateKey()));
+      return Number.isFinite(value) && value >= 0 ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private scheduleScrollSave(): void {
+    if (this.scrollSaveTimer !== null) window.clearTimeout(this.scrollSaveTimer);
+    this.scrollSaveTimer = window.setTimeout(() => {
+      this.scrollSaveTimer = null;
+      this.saveScrollTop();
+    }, 150);
+  }
+
+  private saveScrollTop(): void {
+    try {
+      window.localStorage.setItem(this.scrollStateKey(), String(savedDashboardScrollTop));
+    } catch {
+      // Device-local state must not prevent Portal from opening.
+    }
   }
 
   private renderTabs(root: HTMLElement): void {
