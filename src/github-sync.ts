@@ -5,7 +5,7 @@ import {
   normalizePath,
   requestUrl,
 } from "obsidian";
-import type ObsidianViewerPlugin from "../main";
+import type GitSyncPortPlugin from "../main";
 
 const API_ROOT = "https://api.github.com";
 const API_VERSION = "2026-03-10";
@@ -117,7 +117,7 @@ export class GitHubSyncService {
   private running = false;
 
   constructor(
-    private readonly plugin: ObsidianViewerPlugin,
+    private readonly plugin: GitSyncPortPlugin,
     private readonly onStatus: (status: GitHubSyncStatus) => void,
   ) {}
 
@@ -134,11 +134,11 @@ export class GitHubSyncService {
   }
 
   async sync(): Promise<GitHubSyncResult> {
-    if (this.running) throw new Error("同步已经在进行中。");
+    if (this.running) throw new Error(this.plugin.t("syncAlreadyRunning"));
     this.running = true;
     try {
       const token = this.requireToken();
-      this.update("connecting", "正在连接 GitHub…");
+      this.update("connecting", this.plugin.t("statusConnecting"));
       const repository = await this.getRepository(token);
       const branch = this.plugin.settings.syncBranch.trim() || repository.default_branch;
       let latestRemoteChange: RemoteChangedDuringSyncError | null = null;
@@ -146,7 +146,7 @@ export class GitHubSyncService {
         try {
           if (attempt > 1) {
             await sleep(600 * attempt);
-            this.update("connecting", `远端刚刚更新，正在重新同步（第 ${attempt} 次）…`);
+            this.update("connecting", this.plugin.t("statusRemoteRetry", { attempt }));
           }
           return await this.syncAttempt(token, branch);
         } catch (error) {
@@ -157,7 +157,7 @@ export class GitHubSyncService {
           throw error;
         }
       }
-      throw latestRemoteChange ?? new Error("同步重试失败。");
+      throw latestRemoteChange ?? new Error(this.plugin.t("syncRetryFailed"));
     } catch (error) {
       this.update("error", error instanceof Error ? error.message : String(error));
       throw error;
@@ -172,10 +172,10 @@ export class GitHubSyncService {
       ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit)
       : null;
 
-    this.update("scanning", "正在计算本地文件指纹…");
+    this.update("scanning", this.plugin.t("statusHashing"));
     const local = await this.getLocalSnapshot();
     const plan = createReconcilePlan(local, remote.files, base?.files ?? null);
-    this.update("reconciling", "正在合并本地与远端变更…");
+    this.update("reconciling", this.plugin.t("statusReconciling"));
 
     let pulled = 0;
     let deleted = 0;
@@ -218,7 +218,7 @@ export class GitHubSyncService {
     ];
     for (let index = 0; index < pullOperations.length; index++) {
       const operation = pullOperations[index]!;
-      this.update("pulling", `正在应用远端变更：${operation.path}`, index + 1, pullOperations.length);
+      this.update("pulling", this.plugin.t("statusPulling", { path: operation.path }), index + 1, pullOperations.length);
       if (operation.remote) {
         await this.writeRemoteFile(token, operation.remote);
         pulled++;
@@ -242,7 +242,7 @@ export class GitHubSyncService {
       let index = 0;
       for (const [path, localFile] of upload) {
         index++;
-        this.update("pushing", `正在上传本地变更：${path}`, index, upload.size);
+        this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
         if (!localFile) {
           entries.push({ path, mode: "100644", type: "blob", sha: null });
           pushed++;
@@ -271,7 +271,7 @@ export class GitHubSyncService {
       conflicts,
       changed: pulled + pushed + deleted + conflicts > 0,
     };
-    this.update("complete", result.changed ? "同步完成" : "本地与远端已经一致");
+    this.update("complete", this.plugin.t(result.changed ? "statusComplete" : "alreadyInSync"));
     return result;
   }
 
@@ -281,10 +281,10 @@ export class GitHubSyncService {
     for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
       if (attempt > 1) {
         await sleep(Math.min(5000, 350 * attempt));
-        this.update("pushing", `远端刚刚更新，正在基于最新版本提交（第 ${attempt} 次）…`);
+        this.update("pushing", this.plugin.t("statusCommitRetry", { attempt }));
         remote = await this.getHead(token, branch);
         if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
-          throw new RemoteChangedDuringSyncError("远端在同步期间修改了同一路径，正在重新合并。");
+          throw new RemoteChangedDuringSyncError(this.plugin.t("remoteSamePathChanged"));
         }
       }
       try {
@@ -310,7 +310,7 @@ export class GitHubSyncService {
         throw error;
       }
     }
-    throw latestRemoteChange ?? new Error("远端持续变化，同步提交失败。");
+    throw latestRemoteChange ?? new Error(this.plugin.t("remoteContinuouslyChanged"));
   }
 
   private entriesTouchChangedRemotePaths(entries: TreeEntry[], plannedRemote: RemoteSnapshot, latestRemote: RemoteSnapshot): boolean {
@@ -319,7 +319,7 @@ export class GitHubSyncService {
 
   private requireToken(): string {
     const token = this.plugin.getGitHubToken();
-    if (!token) throw new Error("请先在 Obsidian Viewer 设置中保存 GitHub token。");
+    if (!token) throw new Error(this.plugin.t("tokenRequired"));
     return token;
   }
 
@@ -344,7 +344,7 @@ export class GitHubSyncService {
   private async getSnapshot(token: string, commitSha: string): Promise<RemoteSnapshot> {
     const commit = await this.api<GitCommit>(token, "GET", `/git/commits/${encodeURIComponent(commitSha)}`);
     const tree = await this.api<GitTreeResponse>(token, "GET", `/git/trees/${encodeURIComponent(commit.tree.sha)}?recursive=1`);
-    if (tree.truncated) throw new Error("远端仓库文件树超过 GitHub 单次递归读取上限，已停止同步以避免遗漏文件。");
+    if (tree.truncated) throw new Error(this.plugin.t("remoteTreeTooLarge"));
     const files = new Map<string, RemoteFile>();
     tree.tree.forEach((entry) => {
       const path = normalizePath(entry.path);
@@ -359,7 +359,7 @@ export class GitHubSyncService {
     const snapshot = new Map<string, LocalFile>();
     for (let index = 0; index < files.length; index++) {
       const path = files[index]!;
-      this.update("scanning", `正在扫描：${path}`, index + 1, files.length);
+      this.update("scanning", this.plugin.t("statusScanning", { path }), index + 1, files.length);
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
       snapshot.set(path, { path, sha: await gitBlobSha(data), mtime: await this.getLocalModifiedAt(path) });
@@ -392,7 +392,7 @@ export class GitHubSyncService {
   private async writeRemoteFile(token: string, remote: RemoteFile): Promise<void> {
     this.ensureFileSize(remote.path, remote.size);
     const blob = await this.api<GitBlob>(token, "GET", `/git/blobs/${encodeURIComponent(remote.sha)}`);
-    if (blob.encoding !== "base64") throw new Error(`GitHub 返回了不支持的编码：${remote.path}`);
+    if (blob.encoding !== "base64") throw new Error(this.plugin.t("unsupportedEncoding", { path: remote.path }));
     const data = base64ToArrayBuffer(blob.content.replace(/\s/g, ""));
     this.ensureFileSize(remote.path, data.byteLength);
     await this.ensureParentFolders(remote.path);
@@ -401,14 +401,14 @@ export class GitHubSyncService {
       if (existing instanceof TFile) {
         await this.plugin.app.vault.modifyBinary(existing, data);
       } else if (existing) {
-        throw new Error(`远端文件与本地文件夹同名：${remote.path}`);
+        throw new Error(this.plugin.t("remoteFileFolderConflict", { path: remote.path }));
       } else if (await this.plugin.app.vault.adapter.exists(remote.path)) {
         await this.plugin.app.vault.adapter.writeBinary(remote.path, data);
       } else {
         await this.plugin.app.vault.createBinary(remote.path, data);
       }
     } catch (error) {
-      throw new Error(`写入远端文件失败：${remote.path}：${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(this.plugin.t("remoteWriteFailed", { path: remote.path, error: error instanceof Error ? error.message : String(error) }));
     }
   }
 
@@ -423,7 +423,7 @@ export class GitHubSyncService {
   private async createRemoteConflictCopy(token: string, remote: RemoteFile): Promise<LocalFile> {
     this.ensureFileSize(remote.path, remote.size);
     const blob = await this.api<GitBlob>(token, "GET", `/git/blobs/${encodeURIComponent(remote.sha)}`);
-    if (blob.encoding !== "base64") throw new Error(`GitHub 返回了不支持的编码：${remote.path}`);
+    if (blob.encoding !== "base64") throw new Error(this.plugin.t("unsupportedEncoding", { path: remote.path }));
     const data = base64ToArrayBuffer(blob.content.replace(/\s/g, ""));
     const path = await this.availableConflictPath(remote.path);
     await this.ensureParentFolders(path);
@@ -478,7 +478,7 @@ export class GitHubSyncService {
     for (const segment of parent.split("/")) {
       current = current ? `${current}/${segment}` : segment;
       const existing = this.plugin.app.vault.getAbstractFileByPath(current);
-      if (existing instanceof TFile) throw new Error(`无法创建文件夹，已有同名文件：${current}`);
+      if (existing instanceof TFile) throw new Error(this.plugin.t("folderFileConflict", { path: current }));
       if (!existing && !await this.plugin.app.vault.adapter.exists(current)) {
         try {
           await this.plugin.app.vault.createFolder(current);
@@ -496,10 +496,10 @@ export class GitHubSyncService {
       const content = await this.plugin.app.vault.adapter.read(path);
       enabled = JSON.parse(content) as unknown;
     } catch (error) {
-      throw new Error(`无法读取插件启用列表 ${path}：${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(this.plugin.t("enabledListReadFailed", { path, error: error instanceof Error ? error.message : String(error) }));
     }
     if (!Array.isArray(enabled) || !enabled.every((id) => typeof id === "string")) {
-      throw new Error(`插件启用列表格式无效：${path}`);
+      throw new Error(this.plugin.t("enabledListInvalid", { path }));
     }
     if (enabled.includes(this.plugin.manifest.id)) return null;
     const updated = [...enabled, this.plugin.manifest.id];
@@ -526,7 +526,7 @@ export class GitHubSyncService {
   private ensureFileSize(path: string, bytes: number): void {
     const maximum = Math.max(1, this.plugin.settings.syncMaxFileSizeMb) * 1024 * 1024;
     if (bytes > maximum) {
-      throw new Error(`文件超过 ${this.plugin.settings.syncMaxFileSizeMb} MB 同步上限：${path}`);
+      throw new Error(this.plugin.t("fileTooLarge", { limit: this.plugin.settings.syncMaxFileSizeMb, path }));
     }
   }
 
@@ -536,7 +536,7 @@ export class GitHubSyncService {
   }
 
   private async api<T>(token: string, method: string, endpoint: string, body?: unknown): Promise<T> {
-    const { owner, repository } = parseRepository(this.plugin.settings.syncRepository);
+    const { owner, repository } = parseRepository(this.plugin.settings.syncRepository, this.plugin.t("repositoryFormat"));
     const url = `${API_ROOT}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${endpoint}`;
     const response = await requestUrl({
       url,
@@ -545,7 +545,7 @@ export class GitHubSyncService {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "obsidian-viewer-sync",
+        "User-Agent": "gitsync-port",
       },
       contentType: "application/json",
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -559,11 +559,11 @@ export class GitHubSyncService {
     } catch {
       detail = response.text ? `：${response.text.slice(0, 200)}` : "";
     }
-    if (response.status === 401) throw new Error("GitHub token 无效或已经过期。");
-    if (response.status === 403) throw new Error("GitHub token 缺少仓库 Contents 读写权限，或请求受到速率限制。");
-    if (response.status === 404) throw new Error("找不到仓库、分支或 commit；请检查 token 授权范围和同步设置。");
-    if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(`远端在同步期间发生变化，已自动重新同步${detail}`);
-    throw new Error(`GitHub API 请求失败（HTTP ${response.status}）${detail}`);
+    if (response.status === 401) throw new Error(this.plugin.t("tokenInvalid"));
+    if (response.status === 403) throw new Error(this.plugin.t("tokenForbidden"));
+    if (response.status === 404) throw new Error(this.plugin.t("repositoryNotFound"));
+    if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(this.plugin.t("remoteChanged", { detail }));
+    throw new Error(this.plugin.t("apiFailed", { status: response.status, detail }));
   }
 
   private update(stage: GitHubSyncStage, message: string, current?: number, total?: number): void {
@@ -620,9 +620,9 @@ export async function gitBlobSha(data: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function parseRepository(value: string): { owner: string; repository: string } {
+export function parseRepository(value: string, invalidMessage = "Repository must use the owner/repository format."): { owner: string; repository: string } {
   const match = value.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/);
-  if (!match) throw new Error("仓库格式必须是 owner/repository。");
+  if (!match) throw new Error(invalidMessage);
   return { owner: match[1]!, repository: match[2]! };
 }
 

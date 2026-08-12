@@ -1,12 +1,12 @@
 {
-  "name": "obsidian-viewer",
-  "version": "1.2.8",
+  "name": "gitsync-port",
+  "version": "2.0.0",
   "private": true,
-  "description": "Obsidian Viewer community plugin",
+  "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "kaleido1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kaleido1/Obsidian_Viewer.git"
+    "url": "https://github.com/kaleido1/GitSync-Port.git"
   },
   "main": "main.js",
   "scripts": {
@@ -15,7 +15,8 @@
     "check": "tsc --noEmit --skipLibCheck",
     "check:release": "node scripts/check-release.mjs",
     "test:sync": "node scripts/test-sync.mjs",
-    "test": "npm run build && npm run check:release && npm run test:sync"
+    "test:i18n": "node scripts/test-i18n.mjs",
+    "test": "npm run build && npm run check:release && npm run test:sync && npm run test:i18n"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

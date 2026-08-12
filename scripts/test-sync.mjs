@@ -105,7 +105,7 @@ const listings = {
   },
   ".obsidian/plugins": {
     files: [],
-    folders: [".obsidian/plugins/example-plugin", ".obsidian/plugins/obsidian-git", ".obsidian/plugins/obsidian-viewer"],
+    folders: [".obsidian/plugins/example-plugin", ".obsidian/plugins/obsidian-git", ".obsidian/plugins/gitsync-port"],
   },
   ".obsidian/plugins/example-plugin": {
     files: [
@@ -123,13 +123,13 @@ const listings = {
     ],
     folders: [],
   },
-  ".obsidian/plugins/obsidian-viewer": {
+  ".obsidian/plugins/gitsync-port": {
     files: [
-      ".obsidian/plugins/obsidian-viewer/main.js",
-      ".obsidian/plugins/obsidian-viewer/data.json",
-      ".obsidian/plugins/obsidian-viewer/data.conflict-ios-20260811T132236Z.json",
-      ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
-      ".obsidian/plugins/obsidian-viewer/sync-state.json",
+      ".obsidian/plugins/gitsync-port/main.js",
+      ".obsidian/plugins/gitsync-port/data.json",
+      ".obsidian/plugins/gitsync-port/data.conflict-ios-20260811T132236Z.json",
+      ".obsidian/plugins/gitsync-port/local-sync-state.json",
+      ".obsidian/plugins/gitsync-port/sync-state.json",
     ],
     folders: [],
   },
@@ -148,13 +148,14 @@ const fakePlugin = {
       writeBinary: async (_path, data) => { protectedWrite = new TextDecoder().decode(data); },
     },
   } },
-  manifest: { id: "obsidian-viewer" },
+  manifest: { id: "gitsync-port" },
+  t: (key, values = {}) => `${key}${Object.keys(values).length ? `:${JSON.stringify(values)}` : ""}`,
   settings: { syncIgnorePatterns: [
     ".DS_Store",
     ".obsidian/workspace*.json",
     ".obsidian/page-preview.json",
-    ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
-    ".obsidian/plugins/obsidian-viewer/*.conflict-*",
+    ".obsidian/plugins/gitsync-port/local-sync-state.json",
+    ".obsidian/plugins/gitsync-port/*.conflict-*",
     ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
     ".obsidian/plugins/*/manifest.conflict-*",
   ].join("\n") },
@@ -167,25 +168,26 @@ assert.deepEqual(await service.listAdapterFiles(), [
   ".obsidian/core-plugins.json",
   ".obsidian/plugins/example-plugin/main.js",
   ".obsidian/plugins/example-plugin/manifest.json",
+  ".obsidian/plugins/gitsync-port/data.json",
+  ".obsidian/plugins/gitsync-port/main.js",
+  ".obsidian/plugins/gitsync-port/sync-state.json",
   ".obsidian/plugins/obsidian-git/data.json",
   ".obsidian/plugins/obsidian-git/main.js",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  ".obsidian/plugins/obsidian-viewer/main.js",
-  ".obsidian/plugins/obsidian-viewer/sync-state.json",
   "folder/.hidden.md",
   "folder/visible.md",
   "note.md",
 ]);
 const protectedList = await service.ensureSelfEnabled();
 assert.equal(protectedList.path, ".obsidian/community-plugins.json");
-assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "obsidian-viewer"]);
+assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "gitsync-port"]);
 assert.equal(service.isSelfCoreFile(".obsidian/community-plugins.json"), true);
-assert.equal(service.isSelfCoreFile(".obsidian/plugins/obsidian-viewer/main.js"), true);
+assert.equal(service.isSelfCoreFile(".obsidian/plugins/gitsync-port/main.js"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/dataview/main.js"), false);
 
 const retryPlugin = {
   settings: { syncBranch: "main", syncRepository: "owner/repo", lastSyncedCommit: "", syncDeviceName: "test" },
   getGitHubToken: () => "token",
+  t: (key, values = {}) => `${key}${Object.keys(values).length ? `:${JSON.stringify(values)}` : ""}`,
 };
 const retryStatuses = [];
 const retryService = new GitHubSyncService(retryPlugin, (status) => retryStatuses.push(status.message));
@@ -213,7 +215,7 @@ try {
 }
 assert.equal(retryAttempts, 2);
 assert.equal(retryResult.commitSha, "new");
-assert.ok(retryStatuses.some((message) => message.includes("重新同步")));
+assert.ok(retryStatuses.some((message) => message.includes("statusRemoteRetry")));
 
 const remoteSnapshot = (commitSha, files = []) => ({
   commitSha,
@@ -254,6 +256,7 @@ assert.equal(rebaseCommit, "latest-tree-new-commit");
 const pluginSettingsPlugin = {
   settings: { ...retryPlugin.settings, lastSyncedCommit: "base" },
   getGitHubToken: () => "token",
+  t: retryPlugin.t,
   app: { vault: { adapter: { exists: async () => true } } },
 };
 const pluginSettingsService = new GitHubSyncService(pluginSettingsPlugin, () => {});
@@ -287,13 +290,13 @@ assert.equal(pluginSettingsResult.commitSha, "plugin-settings-upload");
 
 const viewerStateService = new GitHubSyncService(pluginSettingsPlugin, () => {});
 viewerStateService.getHead = async () => remoteSnapshot("remote", [
-  remoteFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "remote"),
+  remoteFile(".obsidian/plugins/gitsync-port/sync-state.json", "remote"),
 ]);
 viewerStateService.tryGetSnapshot = async () => remoteSnapshot("base", [
-  remoteFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "base"),
+  remoteFile(".obsidian/plugins/gitsync-port/sync-state.json", "base"),
 ]);
 viewerStateService.getLocalSnapshot = async () => map([
-  [".obsidian/plugins/obsidian-viewer/sync-state.json", localFile(".obsidian/plugins/obsidian-viewer/sync-state.json", "local")],
+  [".obsidian/plugins/gitsync-port/sync-state.json", localFile(".obsidian/plugins/gitsync-port/sync-state.json", "local")],
 ]);
 viewerStateService.getRemoteModifiedAt = async () => 0;
 viewerStateService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
@@ -306,7 +309,7 @@ viewerStateService.api = async (_token, method, endpoint) => {
 let viewerStatePushes = 0;
 viewerStateService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
   viewerStatePushes++;
-  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/obsidian-viewer/sync-state.json"));
+  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/gitsync-port/sync-state.json"));
   return "state-upload";
 };
 const viewerStateResult = await viewerStateService.syncAttempt("token", "main");

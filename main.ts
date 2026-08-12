@@ -7,20 +7,28 @@ import {
   TFolder,
   normalizePath,
 } from "obsidian";
-import { ViewerDashboardView, VIEW_TYPE_VIEWER } from "./src/viewer-view";
-import { ObsidianViewerSettingTab } from "./src/settings";
+import { GitSyncPortDashboardView, LEGACY_VIEW_TYPE_VIEWER, VIEW_TYPE_GITSYNC_PORT } from "./src/viewer-view";
+import { GitSyncPortSettingTab } from "./src/settings";
 import { registerQuizProcessors, QuizProgress } from "./src/quiz";
 import { GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
+import { LANGUAGE_OPTIONS, LanguageSetting, TranslationKey, formatDateTime, translate } from "./src/i18n";
 
-const GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
-const SYNCED_VIEWER_STATE_PATH = ".obsidian/plugins/obsidian-viewer/sync-state.json";
-const LOCAL_SYNC_STATE_PATH = ".obsidian/plugins/obsidian-viewer/local-sync-state.json";
+const PLUGIN_ID = "gitsync-port";
+const LEGACY_PLUGIN_ID = "obsidian-viewer";
+const GITHUB_TOKEN_SECRET_ID = "gitsync-port-github-token";
+const LEGACY_GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
+const SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
+const LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
+const LEGACY_DATA_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/data.json`;
+const LEGACY_SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/sync-state.json`;
+const LEGACY_LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json`;
 const DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/workspace*.json",
   ".obsidian/page-preview.json",
-  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
-  ".obsidian/plugins/obsidian-viewer/*.conflict-*",
+  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
+  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
+  `.obsidian/plugins/${LEGACY_PLUGIN_ID}/`,
   ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
   ".obsidian/plugins/*/manifest.conflict-*",
   "node_modules/",
@@ -60,6 +68,7 @@ const LEGACY_SYNC_IGNORE_PATTERNS = [
 ].join("\n");
 
 export interface ViewerSettings {
+  language: LanguageSetting;
   homeNote: string;
   favorites: string[];
   history: string[];
@@ -98,6 +107,7 @@ interface ViewerLocalSyncState {
 }
 
 const DEFAULT_SETTINGS: ViewerSettings = {
+  language: "auto",
   homeNote: "",
   favorites: [],
   history: [],
@@ -120,17 +130,17 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   syncIntervalMinutes: 30,
   lastSyncedCommit: "",
   lastSyncAt: 0,
-  lastSyncSummary: "尚未同步",
+  lastSyncSummary: "",
 };
 
-export default class ObsidianViewerPlugin extends Plugin {
+export default class GitSyncPortPlugin extends Plugin {
   settings: ViewerSettings = { ...DEFAULT_SETTINGS };
   private searchCache = new Map<string, string>();
   private quizSaveTimer: number | null = null;
   private syncOnSaveTimer: number | null = null;
   private periodicSyncTimer: number | null = null;
   private periodicSyncKey = "";
-  syncStatus: GitHubSyncStatus = { stage: "idle", message: "尚未同步" };
+  syncStatus: GitHubSyncStatus = { stage: "idle", message: "" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
     this.syncStatus = status;
     void this.refreshDashboard();
@@ -138,27 +148,29 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
-    this.registerView(VIEW_TYPE_VIEWER, (leaf) => new ViewerDashboardView(leaf, this));
-    this.addRibbonIcon("library", "打开 Obsidian Viewer", () => void this.activateDashboard());
+    this.migrateLegacyToken();
+    this.registerView(VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortDashboardView(leaf, this));
+    this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortDashboardView(leaf, this));
+    this.addRibbonIcon("refresh-cw", this.t("openDashboard"), () => void this.activateDashboard());
 
     this.addCommand({
       id: "open-dashboard",
-      name: "打开阅读工作台",
+      name: this.t("openReadingDashboard"),
       callback: () => void this.activateDashboard(),
     });
     this.addCommand({
       id: "sync-github-now",
-      name: "立即与 GitHub 双向同步",
+      name: this.t("syncGitHubNow"),
       callback: () => void this.syncNow(),
     });
     this.addCommand({
       id: "open-home-note",
-      name: "打开首页笔记",
+      name: this.t("openHomeNote"),
       callback: () => void this.openHomeNote(),
     });
     this.addCommand({
       id: "toggle-current-favorite",
-      name: "收藏或取消收藏当前笔记",
+      name: this.t("toggleFavorite"),
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
@@ -168,7 +180,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     });
     this.addCommand({
       id: "set-current-as-home",
-      name: "将当前笔记设为首页",
+      name: this.t("setCurrentHome"),
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
@@ -178,10 +190,10 @@ export default class ObsidianViewerPlugin extends Plugin {
     });
     this.addCommand({
       id: "toggle-focus-reading",
-      name: "切换专注阅读模式",
+      name: this.t("toggleFocus"),
       callback: () => {
         document.body.classList.toggle("ov-focus-reading");
-        new Notice(document.body.classList.contains("ov-focus-reading") ? "已进入专注阅读模式" : "已退出专注阅读模式");
+        new Notice(this.t(document.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
       },
     });
 
@@ -205,7 +217,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
 
     registerQuizProcessors(this);
-    this.addSettingTab(new ObsidianViewerSettingTab(this.app, this));
+    this.addSettingTab(new GitSyncPortSettingTab(this.app, this));
     this.applyReaderSettings();
     this.configurePeriodicSync();
 
@@ -228,7 +240,9 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const loaded = (await this.loadData()) as Partial<ViewerSettings> | null;
+    const currentData = (await this.loadData()) as Partial<ViewerSettings> | null;
+    const legacyData = currentData ? null : await this.loadLegacyPluginData();
+    const loaded = currentData ?? legacyData;
     const localSyncState = await this.loadLocalSyncState(loaded);
     const loadedDeviceName = loaded?.syncDeviceName?.trim() ?? "";
     const syncDeviceNameAuto = typeof loaded?.syncDeviceNameAuto === "boolean"
@@ -237,6 +251,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...(loaded ?? {}),
+      language: isLanguageSetting(loaded?.language) ? loaded.language : "auto",
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       favorites: Array.isArray(loaded?.favorites) ? loaded.favorites : [],
@@ -246,7 +261,8 @@ export default class ObsidianViewerPlugin extends Plugin {
       lastSyncAt: localSyncState.lastSyncAt,
       lastSyncSummary: localSyncState.lastSyncSummary,
     };
-    let migrated = loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
+    let migrated = legacyData !== null
+      || loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
     if ([PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
@@ -256,7 +272,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     if (migrated) await this.savePluginData();
     await this.saveLocalSyncState();
     await this.saveSyncedViewerState();
-    this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary };
+    this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary || this.t("notSynced") };
   }
 
   async saveSettings(): Promise<void> {
@@ -269,11 +285,25 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   getGitHubToken(): string {
-    return this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)?.trim() ?? "";
+    return this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)?.trim()
+      || this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)?.trim()
+      || "";
   }
 
   setGitHubToken(token: string): void {
     this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, token.trim());
+  }
+
+  t(key: TranslationKey, values?: Record<string, string | number>): string {
+    return translate(this.settings.language, key, values);
+  }
+
+  formatDateTime(timestamp: number): string {
+    return formatDateTime(this.settings.language, timestamp);
+  }
+
+  getLanguageOptions(): typeof LANGUAGE_OPTIONS {
+    return LANGUAGE_OPTIONS;
   }
 
   getCurrentDeviceName(): string {
@@ -287,7 +317,7 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   async syncNow(showNotice = true): Promise<void> {
     if (this.githubSync.isRunning) {
-      if (showNotice) new Notice("同步已经在进行中。");
+      if (showNotice) new Notice(this.t("syncAlreadyRunning"));
       return;
     }
     try {
@@ -296,14 +326,19 @@ export default class ObsidianViewerPlugin extends Plugin {
       this.settings.lastSyncedCommit = result.commitSha;
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed
-        ? `拉取 ${result.pulled}、上传 ${result.pushed}、删除 ${result.deleted}、冲突 ${result.conflicts}`
-        : "本地与远端已经一致";
+        ? this.t("syncSummary", {
+          pulled: result.pulled,
+          pushed: result.pushed,
+          deleted: result.deleted,
+          conflicts: result.conflicts,
+        })
+        : this.t("alreadyInSync");
       await this.saveLocalSyncState();
       await this.loadSettings();
       await this.applySyncedViewerStateFromDisk();
       await this.saveSettings();
       await this.refreshDashboard();
-      if (showNotice) new Notice(`GitHub 同步完成：${this.settings.lastSyncSummary}`);
+      if (showNotice) new Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
       if (showNotice) new Notice(error instanceof Error ? error.message : String(error), 8000);
     }
@@ -318,10 +353,11 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   async activateDashboard(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER)[0];
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT)[0]
+      ?? this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeftLeaf(false) ?? this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({ type: VIEW_TYPE_VIEWER, active: true });
+      await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORT, active: true });
     }
     this.app.workspace.revealLeaf(leaf);
   }
@@ -330,7 +366,7 @@ export default class ObsidianViewerPlugin extends Plugin {
     const path = this.settings.homeNote;
     const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
     if (!(file instanceof TFile)) {
-      new Notice("尚未设置有效的首页笔记。可在当前笔记中运行“将当前笔记设为首页”。");
+      new Notice(this.t("missingHomeNote"));
       return;
     }
     await this.app.workspace.getLeaf(false).openFile(file);
@@ -346,18 +382,18 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   async toggleFavorite(file: TFile | TFolder): Promise<void> {
     const isFavorite = this.isFavorite(file.path);
-    const name = file instanceof TFile ? file.basename : file.name || "根目录";
+    const name = file instanceof TFile ? file.basename : file.name || this.t("rootName");
     this.settings.favorites = isFavorite
       ? this.settings.favorites.filter((path) => path !== file.path)
       : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
-    new Notice(isFavorite ? `已取消收藏：${name}` : `已收藏：${name}`);
+    new Notice(this.t(isFavorite ? "removedFavorite" : "addedFavorite", { name }));
   }
 
   async setHomeNote(file: TFile): Promise<void> {
     this.settings.homeNote = file.path;
     await this.saveSettings();
-    new Notice(`首页已设为：${file.basename}`);
+    new Notice(this.t("homeSet", { name: file.basename }));
   }
 
   async recordOpen(file: TFile): Promise<void> {
@@ -425,9 +461,13 @@ export default class ObsidianViewerPlugin extends Plugin {
   }
 
   private async refreshDashboard(): Promise<void> {
-    await Promise.all(this.app.workspace.getLeavesOfType(VIEW_TYPE_VIEWER).map((leaf) => {
+    const leaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER),
+    ];
+    await Promise.all(leaves.map((leaf) => {
       const view = leaf.view;
-      return view instanceof ViewerDashboardView ? view.render() : Promise.resolve();
+      return view instanceof GitSyncPortDashboardView ? view.render() : Promise.resolve();
     }));
   }
 
@@ -476,16 +516,20 @@ export default class ObsidianViewerPlugin extends Plugin {
 
   private async loadSyncedViewerState(): Promise<ViewerSyncedState | null> {
     const path = syncedViewerStatePath(this.app.vault.configDir);
-    if (!await this.app.vault.adapter.exists(path)) return null;
+    const legacyPath = legacySyncedViewerStatePath(this.app.vault.configDir);
+    const sourcePath = await this.app.vault.adapter.exists(path)
+      ? path
+      : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+    if (!sourcePath) return null;
     try {
-      const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerSyncedState>;
+      const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath)) as Partial<ViewerSyncedState>;
       return {
         version: 1,
         favorites: normalizeTrackedPaths(parsed.favorites),
         history: normalizeTrackedPaths(parsed.history),
       };
     } catch (error) {
-      new Notice(`Viewer 共享收藏/历史文件读取失败：${error instanceof Error ? error.message : String(error)}`, 8000);
+      new Notice(this.t("sharedStateReadFailed", { error: error instanceof Error ? error.message : String(error) }), 8000);
       return null;
     }
   }
@@ -513,20 +557,24 @@ export default class ObsidianViewerPlugin extends Plugin {
       await ensureAdapterParentFolders(this, path);
       await this.app.vault.adapter.write(path, content);
     } catch (error) {
-      new Notice(`Viewer 共享收藏/历史文件保存失败：${error instanceof Error ? error.message : String(error)}`, 8000);
+      new Notice(this.t("sharedStateWriteFailed", { error: error instanceof Error ? error.message : String(error) }), 8000);
     }
   }
 
   private async loadLocalSyncState(loaded: Partial<ViewerSettings> | null): Promise<ViewerLocalSyncState> {
     const path = localSyncStatePath(this.app.vault.configDir);
+    const legacyPath = legacyLocalSyncStatePath(this.app.vault.configDir);
     const fallback: ViewerLocalSyncState = {
       lastSyncedCommit: typeof loaded?.lastSyncedCommit === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
       lastSyncAt: typeof loaded?.lastSyncAt === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
       lastSyncSummary: typeof loaded?.lastSyncSummary === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary,
     };
-    if (!await this.app.vault.adapter.exists(path)) return fallback;
+    const sourcePath = await this.app.vault.adapter.exists(path)
+      ? path
+      : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+    if (!sourcePath) return fallback;
     try {
-      const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerLocalSyncState>;
+      const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath)) as Partial<ViewerLocalSyncState>;
       return {
         lastSyncedCommit: typeof parsed.lastSyncedCommit === "string" ? parsed.lastSyncedCommit : fallback.lastSyncedCommit,
         lastSyncAt: typeof parsed.lastSyncAt === "number" ? parsed.lastSyncAt : fallback.lastSyncAt,
@@ -557,14 +605,38 @@ export default class ObsidianViewerPlugin extends Plugin {
     delete syncedSettings.lastSyncSummary;
     await this.saveData(syncedSettings);
   }
+
+  private migrateLegacyToken(): void {
+    if (this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)?.trim()) return;
+    const legacyToken = this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)?.trim();
+    if (legacyToken) this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, legacyToken);
+  }
+
+  private async loadLegacyPluginData(): Promise<Partial<ViewerSettings> | null> {
+    const path = normalizePath(this.app.vault.configDir ? `${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}/data.json` : LEGACY_DATA_PATH);
+    if (!await this.app.vault.adapter.exists(path)) return null;
+    try {
+      return JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerSettings>;
+    } catch {
+      return null;
+    }
+  }
 }
 
 function syncedViewerStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/obsidian-viewer/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
+  return normalizePath(configDir ? `${configDir}/plugins/${PLUGIN_ID}/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
 }
 
 function localSyncStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/obsidian-viewer/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+  return normalizePath(configDir ? `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+}
+
+function legacySyncedViewerStatePath(configDir: string): string {
+  return normalizePath(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/sync-state.json` : LEGACY_SYNCED_VIEWER_STATE_PATH);
+}
+
+function legacyLocalSyncStatePath(configDir: string): string {
+  return normalizePath(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json` : LEGACY_LOCAL_SYNC_STATE_PATH);
 }
 
 function normalizeTrackedPaths(paths: unknown): string[] {
@@ -581,7 +653,7 @@ function normalizeTrackedPaths(paths: unknown): string[] {
   return output;
 }
 
-async function ensureAdapterParentFolders(plugin: ObsidianViewerPlugin, path: string): Promise<void> {
+async function ensureAdapterParentFolders(plugin: GitSyncPortPlugin, path: string): Promise<void> {
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   if (!parent) return;
   let current = "";
@@ -606,3 +678,7 @@ function defaultDeviceName(): string {
 }
 
 const AUTO_GENERATED_DEVICE_NAMES = new Set(["Android", "iOS", "Windows", "macOS", "Linux", "Obsidian"]);
+
+function isLanguageSetting(value: unknown): value is LanguageSetting {
+  return typeof value === "string" && value in LANGUAGE_OPTIONS;
+}

@@ -1,112 +1,172 @@
-# Obsidian Viewer
+# GitSync Port
 
-Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
+GitSync Port is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-当前版本：`1.2.8`
+Current version: `2.0.0`
 
-## 项目维护
+> GitSync Port is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
-本仓库由 [kaleido1](https://github.com/kaleido1) 独立维护，产品路线聚焦于跨平台原生 Obsidian 插件，不再跟随上游 Android 应用的开发方向。
+## Highlights
 
-项目最初基于 `MorganTian886/Obsidian_Viewer`，现有 Git 历史会继续保留早期作者与贡献记录；自分叉后的重构、跨平台插件和后续版本由本仓库独立演进。
+- Two-way GitHub synchronization without system Git, Node.js, Electron, or platform-specific shell commands
+- One implementation for Android, iOS, Windows, macOS, and Linux
+- Three-way reconciliation based on the last synchronized commit
+- Upload, download, and deletion propagation
+- Newer-version conflict resolution with preserved `.conflict-…` copies
+- Automatic retries when the remote branch changes during a sync
+- Startup, save-triggered, manual, and periodic sync modes
+- Fine-grained GitHub token storage through Obsidian `SecretStorage`
+- Vault dashboard with folders, files, search, favorites, history, and an outline
+- Reader font size, line height, width, paragraph spacing, and focus mode
+- Seven Quizzable question types with saved local progress
+- Plugin language setting with system-language detection
+- Selected-file highlighting and scroll-position preservation during dashboard refreshes
 
-## 下载 ZIP 安装（全平台）
+## Languages
 
-同一个安装包支持 Android、iOS、Windows、macOS 和 Linux：
+GitSync Port can follow the language selected in Obsidian or use an explicit language from the plugin settings.
 
-[下载 obsidian-viewer-1.2.8.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.8/obsidian-viewer-1.2.8.zip)
+The language selector closely follows commonly supported Obsidian locales:
 
-将 ZIP 解压到 `<Vault>/.obsidian/plugins/`。安装后应得到 `<Vault>/.obsidian/plugins/obsidian-viewer/`，其中直接包含 `main.js`、`manifest.json` 和 `styles.css`。重新加载 Obsidian，再到“设置 → 第三方插件”启用插件。各平台的具体位置和更新方法见 [INSTALL.md](INSTALL.md)。
+- English and English (UK)
+- 简体中文 and 繁體中文
+- 日本語 and 한국어
+- Español, Deutsch, Italiano, and Français
+- العربية and বাংলা
+- Nederlands, Polski, Português, and Português do Brasil
+- Română, Русский, Svenska, Türkçe, Українська, and Tiếng Việt
 
-## 功能
+English and Simplified Chinese cover the full interface. Traditional Chinese, Japanese, Korean, Spanish, German, and Italian provide broad dashboard, settings, synchronization, and quiz coverage. Other listed locales translate navigation and the main synchronization controls. Every language falls back safely to English for text not yet localized.
 
-- 首页、文件、收藏和阅读历史工作台
-- 文件页按当前目录按文件名浏览文件与文件夹，支持进入文件夹、上一级、后退和前进
-- 文件名与 Markdown 正文全文搜索，支持中文输入法组字和连续键入，搜索条保持圆角外框聚焦样式
-- 笔记和文件夹均可收藏，收藏页可直接打开笔记或进入文件夹
-- 当前笔记目录与标题跳转
-- 字号、行距、正文宽度、段落间距和专注阅读模式
-- Quizzable 七种题型、评分、解析、重试和本地进度
-- Android、iOS、Windows、macOS 和 Linux 双向 GitHub 同步
-- 自动识别当前平台并标记同步提交，也可为同平台多台设备设置自定义名称
-- 同步普通文件、`.obsidian/`、`.gitignore`、插件本体、插件启用列表和所有插件设置
-- 收藏和阅读历史通过共享状态文件跨平台同步，同步完成后立即刷新工作台界面
-- 自动排除工作区布局、Viewer 本机同步状态、conflict 副本和其他临时/高频运行文件
-- 三方差异判断、删除同步、冲突副本、远端变化自动重试、启动同步、保存后同步和定时同步
-- GitHub token 通过 Obsidian `SecretStorage` 保存，不写入 Vault 或插件配置
-- 直接使用 Obsidian 的 Markdown、Wiki Link、嵌入、Properties、Callout、Mermaid、KaTeX、代码高亮、CSS snippets 和 Dataview 能力
+Change the language under **Obsidian → Settings → GitSync Port → Language**. The dashboard updates immediately. Command names are registered when the plugin loads, so reload Obsidian after changing language if you also want Command Palette entries to update.
 
-## 安装
+## Installation
 
-### 手动安装
+Download [gitsync-port-2.0.0.zip](https://github.com/kaleido1/GitSync-Port/releases/download/2.0.0/gitsync-port-2.0.0.zip) and extract it into your vault's plugin directory:
 
-1. 下载 [obsidian-viewer-1.2.8.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.8/obsidian-viewer-1.2.8.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
-2. 将 `obsidian-viewer` 文件夹放入：
+```text
+<Vault>/.obsidian/plugins/
+```
 
-   ```text
-   <Vault>/.obsidian/plugins/
-   ```
+The final layout must be:
 
-3. 重新加载 Obsidian。
-4. 在“设置 → 第三方插件”中启用 **Obsidian Viewer**。
+```text
+<Vault>/.obsidian/plugins/gitsync-port/
+├── main.js
+├── manifest.json
+└── styles.css
+```
 
-移动端和桌面端使用相同的插件目录结构。
+Reload Obsidian, open **Settings → Community plugins**, and enable **GitSync Port**. See [INSTALL.md](INSTALL.md) for platform-specific instructions.
 
-## GitHub 同步
+## Upgrading from Obsidian Viewer 1.x
 
-1. 在 GitHub 创建只授权目标 Vault 仓库的 fine-grained personal access token。
-2. 将 Repository permissions 中的 `Contents` 设置为 `Read and write`。
-3. 在“Obsidian → 设置 → Obsidian Viewer”中填写 token、`owner/repository` 和分支。
-4. 先点击“测试连接”，再执行第一次“立即双向同步”。
-5. 验证无误后，再按需开启启动、保存后或定时同步。
+Version 2.0 changes the plugin ID from `obsidian-viewer` to `gitsync-port`, so install it as a renamed plugin instead of overwriting the old directory.
 
-同步器会同步 Vault 内的笔记、主题、CSS、社区插件、核心插件启用列表、插件程序文件和插件 `data.json` 设置文件。Viewer 的收藏和历史保存在 `.obsidian/plugins/obsidian-viewer/sync-state.json`，会随同步传递到其他设备；Viewer 的本机同步基线保存在 `local-sync-state.json`，默认不参与同步。
+1. Disable **Obsidian Viewer**.
+2. Install GitSync Port into `.obsidian/plugins/gitsync-port/`.
+3. Keep `.obsidian/plugins/obsidian-viewer/` temporarily for the first launch.
+4. Enable GitSync Port and reload Obsidian.
+5. Confirm that the home note, reader settings, favorites, history, sync baseline, and GitHub connection are present.
+6. Remove the old plugin only after verification.
 
-它只会永久忽略 Vault 内的 `.git/` 数据库和 `.trash/` 回收站；默认额外忽略工作区布局、Viewer 本机同步状态、Viewer conflict 副本和 Obsidian Git 临时脚本。Token 位于 Obsidian SecretStorage，不属于 Vault 文件。
+On first load, GitSync Port reads legacy settings, shared favorites/history, local synchronization state, and the old SecretStorage token when new data does not exist. It writes future state under `gitsync-port` and ignores the legacy plugin directory during synchronization.
 
-同一路径两端都变化时，Viewer 会比较本地修改时间与远端该路径最近 commit 时间，较新的版本作为主文件，较旧版本保存为 `.conflict-…` 副本。若同步提交期间远端分支刚好变化，Viewer 会重新读取最新远端并重试提交。
+## GitHub synchronization setup
 
-如果 Vault 同时安装了 Obsidian Git，请只启用一个插件的自动同步功能，避免两个同步器同时更新同一分支。
+1. Create a fine-grained personal access token that can access only the target vault repository.
+2. Grant `Contents: Read and write` repository permission.
+3. Open **Obsidian → Settings → GitSync Port**.
+4. Enter the token, `owner/repository`, and branch.
+5. Select **Test connection**, then run the first two-way sync manually.
+6. Verify the result before enabling startup, save-triggered, or periodic sync.
 
-## 开发与构建
+The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Port compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
 
-需要 Node.js 18 或更高版本：
+If the remote branch changes during the final commit, GitSync Port reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
+
+## What is synchronized
+
+The sync engine traverses the vault through Obsidian's cross-platform Vault Adapter. It can synchronize:
+
+- Markdown notes and attachments
+- `.gitignore`
+- Obsidian themes and CSS snippets
+- Community plugin files and settings
+- Core and community plugin enablement lists
+- GitSync Port program files
+- Shared favorites and reading history in `sync-state.json`
+
+The following stay device-local by default:
+
+- Workspace layout files
+- GitSync Port's local synchronization baseline
+- GitSync Port conflict copies
+- Obsidian Git runtime scripts
+- The legacy `.obsidian/plugins/obsidian-viewer/` migration directory
+
+The vault's `.git/` database and `.trash/` directory are always excluded. The GitHub token is stored in Obsidian SecretStorage and is not a vault file.
+
+If Obsidian Git is installed in the same vault, enable automatic synchronization in only one plugin. Two independent engines updating the same branch can race.
+
+## Dashboard and reading tools
+
+The left-sidebar dashboard provides:
+
+- Home, Files, Favorites, and History tabs
+- Directory navigation with back, forward, parent, and breadcrumb controls
+- Filename and Markdown-body search with IME-safe input handling
+- A visible selected state for the active file
+- Preserved scroll position when the dashboard refreshes
+- Current-note favorite and home-note actions
+- GitHub synchronization status and progress
+- Current-note heading navigation
+
+GitSync Port uses Obsidian's native Markdown rendering, Wiki Links, embeds, Properties, Callouts, Mermaid, KaTeX, syntax highlighting, CSS snippets, and installed Dataview support.
+
+## Development
+
+Node.js 18 or newer is required:
 
 ```bash
 npm install
 npm test
 ```
 
-`npm test` 会执行 TypeScript 检查、生成生产版 `main.js`，并运行 GitHub 同步核心测试。
+`npm test` performs a TypeScript production build, release metadata validation, synchronization-core tests, and localization tests.
 
-开发模式：
+Development mode:
 
 ```bash
 npm run dev
 ```
 
-详细的同步行为和 Quizzable 格式见 [OBSIDIAN_PLUGIN.md](OBSIDIAN_PLUGIN.md)。
-
-## 项目结构
+Project structure:
 
 ```text
-main.ts                 插件入口、设置与生命周期
-src/viewer-view.ts      阅读工作台界面
-src/settings.ts         插件设置界面
-src/github-sync.ts      跨平台 GitHub 双向同步
-src/quiz.ts             Quizzable 解析与交互
-styles.css              桌面端和移动端样式
-scripts/test-sync.mjs   同步核心测试
+main.ts                 Plugin entry point, settings, migration, and lifecycle
+src/i18n.ts             Language registry, translations, and locale resolution
+src/viewer-view.ts      Dashboard and file navigation
+src/settings.ts         Plugin settings interface
+src/github-sync.ts      Cross-platform GitHub synchronization
+src/quiz.ts             Quizzable parsing, rendering, and scoring
+styles.css              Desktop and mobile styles
+scripts/test-sync.mjs   Synchronization-core tests
+scripts/test-i18n.mjs   Language and fallback tests
 ```
 
-## 隐私与安全
+## Privacy and security
 
-- 笔记阅读、搜索和测验在本地完成。
-- GitHub 同步仅在用户配置并触发后访问 GitHub API。
-- Token 不会写入 `data.json`、日志或同步仓库。
-- 同步前会检查文件大小和远端分支，冲突时保留带设备名与时间的副本。
-- Viewer 自己生成的 conflict 副本默认不再参与后续同步扫描。
+- Reading, search, favorites, history, and quizzes operate locally.
+- GitHub is contacted only after synchronization is configured and triggered.
+- The GitHub token is never written to `data.json`, logs, release archives, or the vault.
+- Oversized files stop the sync instead of being silently skipped.
+- Conflict copies preserve displaced content and are excluded from future scans by default.
+
+## Project history
+
+This repository was initially based on `MorganTian886/Obsidian_Viewer`. The Git history retains the original authorship and contribution record. The cross-platform native plugin rewrite and subsequent releases are independently maintained by [kaleido1](https://github.com/kaleido1).
 
 ## License
 
-目前尚未选择开源许可证。原始代码与后续贡献分别保留其作者的权利；在明确许可证发布前，不应将本仓库内容视为已获开源授权。
+No open-source license has been selected. Rights in the original and subsequent contributions remain with their respective authors. Do not treat the repository contents as open-source licensed until an explicit license is added.

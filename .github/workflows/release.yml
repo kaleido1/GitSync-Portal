@@ -32,22 +32,22 @@ jobs:
 
       - name: Package plugin folder
         run: |
-          mkdir -p release/obsidian-viewer
-          cp main.js manifest.json styles.css release/obsidian-viewer/
+          mkdir -p release/gitsync-port
+          cp main.js manifest.json styles.css release/gitsync-port/
           cd release
-          zip -r ../obsidian-viewer-${{ github.ref_name }}.zip obsidian-viewer
+          zip -r ../gitsync-port-${{ github.ref_name }}.zip gitsync-port
 
       - name: Verify ZIP layout
         run: |
-          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/main.js"
-          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/manifest.json"
-          unzip -Z1 obsidian-viewer-${{ github.ref_name }}.zip | grep -Fx "obsidian-viewer/styles.css"
+          unzip -Z1 gitsync-port-${{ github.ref_name }}.zip | grep -Fx "gitsync-port/main.js"
+          unzip -Z1 gitsync-port-${{ github.ref_name }}.zip | grep -Fx "gitsync-port/manifest.json"
+          unzip -Z1 gitsync-port-${{ github.ref_name }}.zip | grep -Fx "gitsync-port/styles.css"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${{ github.ref_name }}"
-          main.js manifest.json styles.css obsidian-viewer-${{ github.ref_name }}.zip
-          --title "Obsidian Viewer ${{ github.ref_name }}"
+          main.js manifest.json styles.css gitsync-port-${{ github.ref_name }}.zip
+          --title "GitSync Port ${{ github.ref_name }}"
           --generate-notes

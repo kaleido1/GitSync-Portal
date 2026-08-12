@@ -1,5 +1,6 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild, TFile, parseYaml } from "obsidian";
-import type ObsidianViewerPlugin from "../main";
+import type GitSyncPortPlugin from "../main";
+import type { TranslationKey } from "./i18n";
 
 type Answer = string | string[] | Record<string, string> | undefined;
 
@@ -52,14 +53,14 @@ interface Score {
   total: number;
 }
 
-export function registerQuizProcessors(plugin: ObsidianViewerPlugin): void {
+export function registerQuizProcessors(plugin: GitSyncPortPlugin): void {
   plugin.registerMarkdownCodeBlockProcessor("quiz", (source, el) => {
     el.addClass("ov-quiz-definition");
     try {
       const definition = unwrapQuiz(parseYaml(source));
-      el.setText(definition?.id ? `题库定义：${definition.id}` : "题库定义");
+      el.setText(definition?.id ? plugin.t("quizDefinitionWithId", { id: definition.id }) : plugin.t("quizDefinition"));
     } catch {
-      el.setText("题库定义格式错误");
+      el.setText(plugin.t("quizDefinitionInvalid"));
     }
   });
 
@@ -74,7 +75,7 @@ class QuizRenderChild extends MarkdownRenderChild {
     containerEl: HTMLElement,
     private readonly source: string,
     private readonly context: MarkdownPostProcessorContext,
-    private readonly plugin: ObsidianViewerPlugin,
+    private readonly plugin: GitSyncPortPlugin,
   ) {
     super(containerEl);
   }
@@ -86,7 +87,7 @@ class QuizRenderChild extends MarkdownRenderChild {
   private async initialize(): Promise<void> {
     try {
       const quiz = await this.resolveQuiz();
-      validateQuiz(quiz);
+      validateQuiz(quiz, (key, values) => this.plugin.t(key, values));
       this.renderQuiz(quiz);
     } catch (error) {
       this.containerEl.empty();
@@ -110,7 +111,7 @@ class QuizRenderChild extends MarkdownRenderChild {
       const first = definitions.values().next().value as QuizDefinition | undefined;
       if (first) return first;
     }
-    throw new Error(id ? `找不到题库定义：${id}` : "需要完整 quiz、题库 id，或 source: current。");
+    throw new Error(id ? this.plugin.t("quizNotFound", { id }) : this.plugin.t("quizSourceRequired"));
   }
 
   private async readDefinitions(): Promise<Map<string, QuizDefinition>> {
@@ -159,7 +160,7 @@ class QuizRenderChild extends MarkdownRenderChild {
 
       if (oneAtATime) {
         const navigation = card.createDiv({ cls: "ov-quiz-nav" });
-        const previous = navigation.createEl("button", { text: "上一题" });
+        const previous = navigation.createEl("button", { text: this.plugin.t("previousQuestion") });
         previous.disabled = state.page === 0;
         previous.addEventListener("click", () => {
           state.page = Math.max(0, state.page - 1);
@@ -167,7 +168,7 @@ class QuizRenderChild extends MarkdownRenderChild {
           draw();
         });
         navigation.createSpan({ text: `${state.page + 1}/${questions.length}` });
-        const next = navigation.createEl("button", { text: "下一题" });
+        const next = navigation.createEl("button", { text: this.plugin.t("nextQuestion") });
         next.disabled = state.page >= questions.length - 1;
         next.addEventListener("click", () => {
           state.page = Math.min(questions.length - 1, state.page + 1);
@@ -177,13 +178,13 @@ class QuizRenderChild extends MarkdownRenderChild {
       }
 
       const actions = card.createDiv({ cls: "ov-quiz-actions" });
-      const submit = actions.createEl("button", { text: state.submitted ? "重新评分" : "提交", cls: "mod-cta" });
+      const submit = actions.createEl("button", { text: this.plugin.t(state.submitted ? "rescore" : "submit"), cls: "mod-cta" });
       submit.addEventListener("click", () => {
         state.submitted = true;
         save();
         draw();
       });
-      const retry = actions.createEl("button", { text: "重新作答" });
+      const retry = actions.createEl("button", { text: this.plugin.t("retryQuiz") });
       retry.addEventListener("click", () => {
         state.answers = {};
         state.submitted = false;
@@ -266,7 +267,7 @@ class QuizRenderChild extends MarkdownRenderChild {
       order.forEach((id, index) => {
         const row = orderBox.createDiv({ cls: "ov-quiz-order-row" });
         row.createSpan({ text: `${index + 1}. ${byId.get(id)?.text ?? id}` });
-        const up = row.createEl("button", { text: "▲", attr: { "aria-label": "上移" } });
+        const up = row.createEl("button", { text: "▲", attr: { "aria-label": this.plugin.t("moveUp") } });
         up.disabled = disabled || index === 0;
         up.addEventListener("click", () => {
           [order[index - 1], order[index]] = [order[index]!, order[index - 1]!];
@@ -274,7 +275,7 @@ class QuizRenderChild extends MarkdownRenderChild {
           save();
           draw();
         });
-        const down = row.createEl("button", { text: "▼", attr: { "aria-label": "下移" } });
+        const down = row.createEl("button", { text: "▼", attr: { "aria-label": this.plugin.t("moveDown") } });
         down.disabled = disabled || index === order.length - 1;
         down.addEventListener("click", () => {
           [order[index], order[index + 1]] = [order[index + 1]!, order[index]!];
@@ -290,7 +291,7 @@ class QuizRenderChild extends MarkdownRenderChild {
       const feedback = section.createDiv({
         cls: `ov-quiz-feedback ${result.ratio === 1 ? "is-correct" : "is-wrong"}`,
       });
-      feedback.createSpan({ text: result.ratio === 1 ? "正确" : "未完全正确" });
+      feedback.createSpan({ text: this.plugin.t(result.ratio === 1 ? "correct" : "notFullyCorrect") });
       if (question.explanation) feedback.createSpan({ text: ` — ${question.explanation}` });
     }
   }
@@ -302,8 +303,8 @@ class QuizRenderChild extends MarkdownRenderChild {
     const percent = total ? Math.round(score / total * 100) : 0;
     const result = card.createDiv({ cls: "ov-quiz-result" });
     let suffix = "";
-    if (quiz.passingScore !== undefined) suffix = percent >= quiz.passingScore ? " · 通过" : " · 未通过";
-    result.setText(`得分 ${score.toFixed(1)}/${total}（${percent}%）${suffix}`);
+    if (quiz.passingScore !== undefined) suffix = ` · ${this.plugin.t(percent >= quiz.passingScore ? "passed" : "failed")}`;
+    result.setText(this.plugin.t("score", { score: score.toFixed(1), total, percent, suffix }));
   }
 }
 
@@ -342,17 +343,17 @@ function scoreQuestion(question: QuizQuestion, answer: Answer): Score {
   return { ratio, points: total * ratio, total };
 }
 
-function validateQuiz(quiz: QuizDefinition): void {
-  if (!quiz || typeof quiz !== "object") throw new Error("题目必须是 YAML 对象。");
-  if (!quiz.id || typeof quiz.id !== "string") throw new Error("题目需要 id。");
-  if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) throw new Error("题目需要非空 questions。");
+function validateQuiz(quiz: QuizDefinition, t: (key: TranslationKey, values?: Record<string, string | number>) => string): void {
+  if (!quiz || typeof quiz !== "object") throw new Error(t("quizMustBeObject"));
+  if (!quiz.id || typeof quiz.id !== "string") throw new Error(t("quizNeedsId"));
+  if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) throw new Error(t("quizNeedsQuestions"));
   const ids = new Set<string>();
   quiz.questions.forEach((question, index) => {
-    if (!question?.id || !question.type || !question.prompt) throw new Error(`第 ${index + 1} 题缺少 id、type 或 prompt。`);
-    if (ids.has(question.id)) throw new Error(`题目 id 重复：${question.id}`);
+    if (!question?.id || !question.type || !question.prompt) throw new Error(t("quizQuestionMissing", { index: index + 1 }));
+    if (ids.has(question.id)) throw new Error(t("quizDuplicateId", { id: question.id }));
     ids.add(question.id);
     if (!["multiple-choice", "true-false", "multiple-select", "short-text", "numeric", "matching", "reorder"].includes(question.type)) {
-      throw new Error(`不支持的题型：${String(question.type)}`);
+      throw new Error(t("quizUnsupportedType", { type: String(question.type) }));
     }
   });
 }

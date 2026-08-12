@@ -1,11 +1,12 @@
 import { ItemView, TAbstractFile, TFile, TFolder, WorkspaceLeaf, setIcon } from "obsidian";
-import type ObsidianViewerPlugin from "../main";
+import type GitSyncPortPlugin from "../main";
 
-export const VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
+export const VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
+export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
 
-export class ViewerDashboardView extends ItemView {
+export class GitSyncPortDashboardView extends ItemView {
   private activeTab: DashboardTab = "home";
   private searchQuery = "";
   private searchSequence = 0;
@@ -15,16 +16,16 @@ export class ViewerDashboardView extends ItemView {
   private folderBackStack: string[] = [];
   private folderForwardStack: string[] = [];
 
-  constructor(leaf: WorkspaceLeaf, private readonly plugin: ObsidianViewerPlugin) {
+  constructor(leaf: WorkspaceLeaf, private readonly plugin: GitSyncPortPlugin) {
     super(leaf);
   }
 
   getViewType(): string {
-    return VIEW_TYPE_VIEWER;
+    return VIEW_TYPE_GITSYNC_PORT;
   }
 
   getDisplayText(): string {
-    return "Obsidian Viewer";
+    return this.plugin.t("appName");
   }
 
   getIcon(): string {
@@ -43,14 +44,15 @@ export class ViewerDashboardView extends ItemView {
   async render(): Promise<void> {
     const root = this.contentEl;
     const searchFocus = this.captureSearchFocus(root);
+    const scrollTop = root.scrollTop;
     root.empty();
     root.addClass("ov-dashboard");
 
     const header = root.createDiv({ cls: "ov-dashboard-header" });
     const titleBox = header.createDiv();
-    titleBox.createEl("h2", { text: "Obsidian Viewer" });
-    titleBox.createEl("small", { text: `${this.app.vault.getMarkdownFiles().length} 篇笔记` });
-    const refresh = header.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": "刷新" } });
+    titleBox.createEl("h2", { text: this.plugin.t("appName") });
+    titleBox.createEl("small", { text: this.plugin.t("notesCount", { count: this.app.vault.getMarkdownFiles().length }) });
+    const refresh = header.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": this.plugin.t("refresh") } });
     setIcon(refresh, "refresh-cw");
     refresh.addEventListener("click", () => void this.render());
 
@@ -59,17 +61,18 @@ export class ViewerDashboardView extends ItemView {
 
     if (this.activeTab === "home") await this.renderHome(root);
     if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
-    if (this.activeTab === "favorites") this.renderTrackedItems(root, "收藏", this.plugin.settings.favorites, "还没有收藏。", true);
+    if (this.activeTab === "favorites") this.renderTrackedItems(root, this.plugin.t("tabFavorites"), this.plugin.settings.favorites, this.plugin.t("noFavorites"), true);
     if (this.activeTab === "history") this.renderHistory(root);
+    root.scrollTop = scrollTop;
   }
 
   private renderTabs(root: HTMLElement): void {
     const tabs = root.createDiv({ cls: "ov-tabs" });
     const choices: Array<[DashboardTab, string, string]> = [
-      ["home", "首页", "home"],
-      ["files", "文件", "files"],
-      ["favorites", "收藏", "star"],
-      ["history", "历史", "history"],
+      ["home", this.plugin.t("tabHome"), "home"],
+      ["files", this.plugin.t("tabFiles"), "files"],
+      ["favorites", this.plugin.t("tabFavorites"), "star"],
+      ["history", this.plugin.t("tabHistory"), "history"],
     ];
     choices.forEach(([tab, label, icon]) => {
       const button = tabs.createEl("button", {
@@ -90,35 +93,35 @@ export class ViewerDashboardView extends ItemView {
     const file = this.app.workspace.getActiveFile();
     if (!(file instanceof TFile) || file.extension !== "md") return;
     const card = root.createDiv({ cls: "ov-active-card" });
-    card.createEl("small", { text: "当前笔记" });
+    card.createEl("small", { text: this.plugin.t("currentNote") });
     card.createEl("strong", { text: file.basename });
     card.createEl("span", { text: file.path, cls: "ov-muted ov-path" });
     const actions = card.createDiv({ cls: "ov-inline-actions" });
-    this.iconButton(actions, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.isFavorite(file.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(file));
-    this.iconButton(actions, "house-plus", "设为首页", () => void this.plugin.setHomeNote(file));
+    this.iconButton(actions, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
+    this.iconButton(actions, "house-plus", this.plugin.t("setAsHome"), () => void this.plugin.setHomeNote(file));
   }
 
   private async renderHome(root: HTMLElement): Promise<void> {
     const home = this.plugin.getMarkdownFile(this.plugin.settings.homeNote);
     const hero = root.createDiv({ cls: "ov-home-card" });
-    hero.createEl("div", { text: "首页笔记", cls: "ov-eyebrow" });
-    hero.createEl("h3", { text: home?.basename ?? "尚未设置" });
+    hero.createEl("div", { text: this.plugin.t("homeNoteCard"), cls: "ov-eyebrow" });
+    hero.createEl("h3", { text: home?.basename ?? this.plugin.t("notSet") });
     hero.createEl("p", {
-      text: home ? home.path : "打开一篇笔记后，使用当前笔记卡片上的首页按钮。",
+      text: home ? home.path : this.plugin.t("homeNoteHint"),
       cls: "ov-muted",
     });
     const heroActions = hero.createDiv({ cls: "ov-inline-actions" });
-    const openHome = heroActions.createEl("button", { text: "打开首页", cls: "mod-cta" });
+    const openHome = heroActions.createEl("button", { text: this.plugin.t("openHome"), cls: "mod-cta" });
     openHome.disabled = !home;
     openHome.addEventListener("click", () => void this.plugin.openHomeNote());
 
     this.renderSyncCard(root);
 
     const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getFileOrFolder(path)).filter((item): item is ViewerListItem => item !== null).slice(0, 5);
-    this.renderSection(root, "收藏", favorites, "还没有收藏笔记。", true);
+    this.renderSection(root, this.plugin.t("tabFavorites"), favorites, this.plugin.t("noFavoriteNotes"), true);
 
     const recent = this.plugin.settings.history.map((path) => this.plugin.getMarkdownFile(path)).filter((file): file is TFile => file !== null).slice(0, 8);
-    this.renderSection(root, "最近阅读", recent, "打开过的笔记会出现在这里。", false);
+    this.renderSection(root, this.plugin.t("recentReading"), recent, this.plugin.t("recentReadingEmpty"), false);
 
     this.renderOutline(root);
   }
@@ -128,13 +131,13 @@ export class ViewerDashboardView extends ItemView {
     const card = root.createDiv({ cls: `ov-sync-card is-${status.stage}` });
     const header = card.createDiv({ cls: "ov-sync-card-header" });
     const title = header.createDiv();
-    title.createEl("strong", { text: "GitHub 跨平台同步" });
-    title.createEl("small", { text: `${this.plugin.settings.syncRepository} · ${this.plugin.settings.syncBranch || "默认分支"}` });
-    const sync = header.createEl("button", { text: this.plugin.githubSync.isRunning ? "同步中…" : "立即同步", cls: "mod-cta" });
+    title.createEl("strong", { text: this.plugin.t("githubSync") });
+    title.createEl("small", { text: `${this.plugin.settings.syncRepository} · ${this.plugin.settings.syncBranch || this.plugin.t("defaultBranch")}` });
+    const sync = header.createEl("button", { text: this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow"), cls: "mod-cta" });
     sync.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
     sync.addEventListener("click", () => void this.plugin.syncNow());
     card.createDiv({
-      text: this.plugin.getGitHubToken() ? status.message : "尚未保存 GitHub token，请先前往插件设置。",
+      text: this.plugin.getGitHubToken() ? status.message : this.plugin.t("tokenMissing"),
       cls: "ov-sync-message",
     });
     if (status.total && status.current !== undefined) {
@@ -144,7 +147,7 @@ export class ViewerDashboardView extends ItemView {
     }
     if (this.plugin.settings.lastSyncAt) {
       card.createEl("small", {
-        text: `${new Date(this.plugin.settings.lastSyncAt).toLocaleString()} · ${this.plugin.settings.lastSyncSummary}`,
+        text: `${this.plugin.formatDateTime(this.plugin.settings.lastSyncAt)} · ${this.plugin.settings.lastSyncSummary || this.plugin.t("notSynced")}`,
         cls: "ov-muted",
       });
     }
@@ -175,9 +178,9 @@ export class ViewerDashboardView extends ItemView {
     setIcon(searchBox.createSpan(), "search");
     const input = searchBox.createEl("input", {
       type: "search",
-      placeholder: "搜索文件名和正文…",
+      placeholder: this.plugin.t("searchPlaceholder"),
       value: this.searchQuery,
-      attr: { "aria-label": "搜索文件名和正文" },
+      attr: { "aria-label": this.plugin.t("searchPlaceholder") },
     });
     const results = root.createDiv({ cls: "ov-search-results" });
     searchBox.addEventListener("click", () => input.focus());
@@ -209,11 +212,11 @@ export class ViewerDashboardView extends ItemView {
     const sequence = ++this.searchSequence;
     results.empty();
     if (this.searchQuery.trim()) {
-      results.createDiv({ text: "正在搜索…", cls: "ov-search-status" });
+      results.createDiv({ text: this.plugin.t("searching"), cls: "ov-search-status" });
       const files = await this.plugin.searchFiles(this.searchQuery);
       if (sequence !== this.searchSequence || !results.isConnected) return;
       results.empty();
-      this.renderSection(results, `搜索结果（${files.length}）`, files, "没有匹配的笔记。", true);
+      this.renderSection(results, this.plugin.t("searchResults", { count: files.length }), files, this.plugin.t("noMatches"), true);
     } else {
       this.renderDirectory(results);
     }
@@ -222,12 +225,12 @@ export class ViewerDashboardView extends ItemView {
   private renderDirectory(root: HTMLElement): void {
     const folder = this.getCurrentFolder();
     const controls = root.createDiv({ cls: "ov-directory-controls" });
-    this.iconButton(controls, "arrow-left", "后退", () => this.navigateHistory(-1)).disabled = this.folderBackStack.length === 0;
-    this.iconButton(controls, "arrow-right", "前进", () => this.navigateHistory(1)).disabled = this.folderForwardStack.length === 0;
-    this.iconButton(controls, "arrow-up", "上一级", () => this.openParentFolder()).disabled = !this.currentFolderPath;
+    this.iconButton(controls, "arrow-left", this.plugin.t("back"), () => this.navigateHistory(-1)).disabled = this.folderBackStack.length === 0;
+    this.iconButton(controls, "arrow-right", this.plugin.t("forward"), () => this.navigateHistory(1)).disabled = this.folderForwardStack.length === 0;
+    this.iconButton(controls, "arrow-up", this.plugin.t("parentFolder"), () => this.openParentFolder()).disabled = !this.currentFolderPath;
     const location = controls.createDiv({ cls: "ov-directory-location" });
     setIcon(location.createSpan(), "folder-open");
-    location.createSpan({ text: this.currentFolderPath || "Vault 根目录" });
+    location.createSpan({ text: this.currentFolderPath || this.plugin.t("vaultRoot") });
 
     this.renderBreadcrumbs(root);
     const children = [...folder.children].sort(compareVaultItems);
@@ -236,7 +239,7 @@ export class ViewerDashboardView extends ItemView {
 
   private renderBreadcrumbs(root: HTMLElement): void {
     const crumbs = root.createDiv({ cls: "ov-breadcrumbs" });
-    const rootButton = crumbs.createEl("button", { text: "根目录" });
+    const rootButton = crumbs.createEl("button", { text: this.plugin.t("rootFolder") });
     rootButton.addEventListener("click", () => this.openFolder("", true));
     if (!this.currentFolderPath) return;
     let path = "";
@@ -250,10 +253,10 @@ export class ViewerDashboardView extends ItemView {
   }
 
   private renderDirectoryList(root: HTMLElement, children: TAbstractFile[]): void {
-    root.createEl("h3", { text: `${this.currentFolderPath || "根目录"}（${children.length}）`, cls: "ov-section-title" });
+    root.createEl("h3", { text: this.plugin.t("folderTitle", { name: this.currentFolderPath || this.plugin.t("rootFolder"), count: children.length }), cls: "ov-section-title" });
     const list = root.createDiv({ cls: "ov-file-list" });
     if (!children.length) {
-      list.createEl("p", { text: "当前目录为空。", cls: "ov-empty" });
+      list.createEl("p", { text: this.plugin.t("emptyFolder"), cls: "ov-empty" });
       return;
     }
     children.forEach((child) => {
@@ -262,20 +265,21 @@ export class ViewerDashboardView extends ItemView {
       if (child instanceof TFolder) {
         setIcon(open.createSpan({ cls: "ov-file-icon" }), "folder");
         const labels = open.createSpan({ cls: "ov-file-labels" });
-        labels.createEl("strong", { text: child.name || "根目录" });
-        labels.createEl("small", { text: `${child.children.length} 项 · ${child.path || "Vault 根目录"}` });
+        labels.createEl("strong", { text: child.name || this.plugin.t("rootFolder") });
+        labels.createEl("small", { text: `${this.plugin.t("itemCount", { count: child.children.length })} · ${child.path || this.plugin.t("vaultRoot")}` });
         open.addEventListener("click", () => this.openFolder(child.path, true));
-        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(child));
+        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
         return;
       }
       if (child instanceof TFile) {
+        this.markSelectedFile(row, child);
         setIcon(open.createSpan({ cls: "ov-file-icon" }), child.extension === "md" ? "file-text" : "file");
         const labels = open.createSpan({ cls: "ov-file-labels" });
         labels.createEl("strong", { text: child.basename });
         labels.createEl("small", { text: child.path });
-        open.addEventListener("click", () => void this.plugin.openFile(child));
+        open.addEventListener("click", () => this.selectAndOpenFile(row, child));
         if (child.extension === "md") {
-          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.isFavorite(child.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(child));
+          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
         }
       }
     });
@@ -283,18 +287,18 @@ export class ViewerDashboardView extends ItemView {
 
   private renderHistory(root: HTMLElement): void {
     const heading = root.createDiv({ cls: "ov-section-heading" });
-    heading.createEl("h3", { text: `阅读历史（${this.plugin.settings.history.length}）` });
-    const clear = heading.createEl("button", { text: "清空", cls: "mod-warning" });
+    heading.createEl("h3", { text: this.plugin.t("readingHistory", { count: this.plugin.settings.history.length }) });
+    const clear = heading.createEl("button", { text: this.plugin.t("clear"), cls: "mod-warning" });
     clear.disabled = this.plugin.settings.history.length === 0;
     clear.addEventListener("click", () => void this.plugin.clearHistory());
-    this.renderTrackedItems(root, "", this.plugin.settings.history, "暂无阅读历史。", false, false);
+    this.renderTrackedItems(root, "", this.plugin.settings.history, this.plugin.t("noHistory"), false, false);
   }
 
   private renderTrackedItems(root: HTMLElement, title: string, paths: string[], emptyText: string, showFavorite: boolean, showHeading = true): void {
     const items = paths
       .map((path) => showFavorite ? this.plugin.getFileOrFolder(path) : this.plugin.getMarkdownFile(path))
       .filter((item): item is ViewerListItem => item !== null);
-    if (showHeading && title) root.createEl("h3", { text: `${title}（${items.length}）`, cls: "ov-section-title" });
+    if (showHeading && title) root.createEl("h3", { text: this.plugin.t("folderTitle", { name: title, count: items.length }), cls: "ov-section-title" });
     this.renderFileList(root, items, emptyText, showFavorite);
   }
 
@@ -311,22 +315,23 @@ export class ViewerDashboardView extends ItemView {
     }
     files.forEach((file) => {
       const row = list.createDiv({ cls: "ov-file-row" });
+      if (file instanceof TFile) this.markSelectedFile(row, file);
       const open = row.createEl("button", { cls: "ov-file-open" });
       setIcon(open.createSpan({ cls: "ov-file-icon" }), file instanceof TFolder ? "folder" : "file-text");
       const labels = open.createSpan({ cls: "ov-file-labels" });
-      labels.createEl("strong", { text: file instanceof TFolder ? file.name || "根目录" : file.basename });
-      labels.createEl("small", { text: file instanceof TFolder ? `${file.children.length} 项 · ${file.path || "Vault 根目录"}` : file.path });
+      labels.createEl("strong", { text: file instanceof TFolder ? file.name || this.plugin.t("rootFolder") : file.basename });
+      labels.createEl("small", { text: file instanceof TFolder ? `${this.plugin.t("itemCount", { count: file.children.length })} · ${file.path || this.plugin.t("vaultRoot")}` : file.path });
       open.addEventListener("click", () => {
         if (file instanceof TFolder) {
           this.activeTab = "files";
           this.searchQuery = "";
           this.openFolder(file.path, true);
         } else {
-          void this.plugin.openFile(file);
+          this.selectAndOpenFile(row, file);
         }
       });
       if (showFavorite) {
-        this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.isFavorite(file.path) ? "取消收藏" : "收藏", () => void this.plugin.toggleFavorite(file));
+        this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
       }
     });
   }
@@ -335,10 +340,10 @@ export class ViewerDashboardView extends ItemView {
     const file = this.app.workspace.getActiveFile();
     if (!(file instanceof TFile)) return;
     const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
-    root.createEl("h3", { text: "本页目录", cls: "ov-section-title" });
+    root.createEl("h3", { text: this.plugin.t("pageOutline"), cls: "ov-section-title" });
     const outline = root.createDiv({ cls: "ov-outline" });
     if (!headings.length) {
-      outline.createEl("p", { text: "当前笔记没有标题。", cls: "ov-empty" });
+      outline.createEl("p", { text: this.plugin.t("noHeadings"), cls: "ov-empty" });
       return;
     }
     headings.forEach(({ heading, level }) => {
@@ -353,6 +358,22 @@ export class ViewerDashboardView extends ItemView {
     setIcon(button, icon);
     button.addEventListener("click", action);
     return button;
+  }
+
+  private markSelectedFile(row: HTMLElement, file: TFile): void {
+    if (this.app.workspace.getActiveFile()?.path !== file.path) return;
+    row.addClass("is-selected");
+    row.setAttribute("aria-current", "true");
+  }
+
+  private selectAndOpenFile(row: HTMLElement, file: TFile): void {
+    this.contentEl.querySelectorAll<HTMLElement>(".ov-file-row.is-selected").forEach((selected) => {
+      selected.removeClass("is-selected");
+      selected.removeAttribute("aria-current");
+    });
+    row.addClass("is-selected");
+    row.setAttribute("aria-current", "true");
+    void this.plugin.openFile(file);
   }
 
   private getCurrentFolder(): TFolder {

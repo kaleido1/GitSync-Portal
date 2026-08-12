@@ -267,6 +267,24 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
+.ov-file-row.is-selected {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+  box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.ov-file-row.is-selected .ov-file-open {
+  color: var(--text-normal);
+}
+
+.ov-file-row.is-selected .ov-file-labels strong {
+  color: var(--interactive-accent);
+  font-weight: var(--font-semibold);
+}
+
+.ov-file-row.is-selected .ov-file-icon {
+  color: var(--interactive-accent);
+}
+
 .ov-file-open {
   display: flex;
   align-items: center;

@@ -1,6 +1,21 @@
 # Changelog
 
-Obsidian Viewer 的重要变更记录在此文件中。
+## [2.0.0] - 2026-08-12
+
+### Changed
+
+- Renamed the plugin and repository to GitSync Port (`gitsync-port`).
+- Rewrote the README and installation guide in English.
+- Added safe migration from the legacy `obsidian-viewer` plugin data, shared state, local sync state, enabled-plugin entry, and SecretStorage token.
+
+### Added
+
+- Added a plugin language selector with system/Obsidian language detection and 21 selectable languages.
+- Added full interface translations for English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, German, and Italian, plus major-navigation translations with English fallback for additional Obsidian locales.
+- Added active-file highlighting in dashboard lists.
+- Preserved dashboard scroll position across refreshes so file selection and background updates no longer jump to the top.
+
+Earlier entries retain their original release language and historical product name.
 
 ## [1.2.8] - 2026-08-12
 
