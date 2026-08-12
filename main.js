@@ -35,6 +35,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     this.searchQuery = "";
     this.searchSequence = 0;
     this.searchTimer = null;
+    this.isSearchComposing = false;
     this.currentFolderPath = "";
     this.folderBackStack = [];
     this.folderForwardStack = [];
@@ -57,6 +58,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
   }
   async render() {
     const root = this.contentEl;
+    const searchFocus = this.captureSearchFocus(root);
     root.empty();
     root.addClass("ov-dashboard");
     const header = root.createDiv({ cls: "ov-dashboard-header" });
@@ -69,7 +71,7 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
     this.renderTabs(root);
     this.renderActiveNote(root);
     if (this.activeTab === "home") await this.renderHome(root);
-    if (this.activeTab === "files") await this.renderFiles(root);
+    if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
     if (this.activeTab === "favorites") this.renderTrackedItems(root, "\u6536\u85CF", this.plugin.settings.favorites, "\u8FD8\u6CA1\u6709\u6536\u85CF\u3002", true);
     if (this.activeTab === "history") this.renderHistory(root);
   }
@@ -153,7 +155,26 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
       });
     }
   }
-  async renderFiles(root) {
+  captureSearchFocus(root) {
+    var _a, _b;
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLInputElement) || !root.contains(activeElement) || !activeElement.matches(".ov-search-box input")) {
+      return null;
+    }
+    const length = activeElement.value.length;
+    return {
+      start: (_a = activeElement.selectionStart) != null ? _a : length,
+      end: (_b = activeElement.selectionEnd) != null ? _b : length
+    };
+  }
+  scheduleSearchRender(results) {
+    if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+    this.searchTimer = window.setTimeout(() => {
+      this.searchTimer = null;
+      if (results.isConnected) void this.renderSearchResults(results);
+    }, 250);
+  }
+  async renderFiles(root, searchFocus) {
     const searchBox = root.createDiv({ cls: "ov-search-box", attr: { tabindex: "0", role: "search" } });
     (0, import_obsidian.setIcon)(searchBox.createSpan(), "search");
     const input = searchBox.createEl("input", {
@@ -162,23 +183,41 @@ var ViewerDashboardView = class extends import_obsidian.ItemView {
       value: this.searchQuery,
       attr: { "aria-label": "\u641C\u7D22\u6587\u4EF6\u540D\u548C\u6B63\u6587" }
     });
+    const results = root.createDiv({ cls: "ov-search-results" });
     searchBox.addEventListener("click", () => input.focus());
     searchBox.addEventListener("focus", () => input.focus());
-    input.addEventListener("input", () => {
-      this.searchQuery = input.value;
+    input.addEventListener("compositionstart", () => {
+      this.isSearchComposing = true;
       if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
-      this.searchTimer = window.setTimeout(() => void this.render(), 250);
     });
+    input.addEventListener("compositionend", () => {
+      this.isSearchComposing = false;
+      this.searchQuery = input.value;
+      this.scheduleSearchRender(results);
+    });
+    input.addEventListener("input", (event) => {
+      if (event.isComposing || this.isSearchComposing) return;
+      this.searchQuery = input.value;
+      this.scheduleSearchRender(results);
+    });
+    if (searchFocus) {
+      const length = input.value.length;
+      input.focus();
+      input.setSelectionRange(Math.min(searchFocus.start, length), Math.min(searchFocus.end, length));
+    }
+    await this.renderSearchResults(results);
+  }
+  async renderSearchResults(results) {
     const sequence = ++this.searchSequence;
-    let files;
+    results.empty();
     if (this.searchQuery.trim()) {
-      const status = root.createDiv({ text: "\u6B63\u5728\u641C\u7D22\u2026", cls: "ov-search-status" });
-      files = await this.plugin.searchFiles(this.searchQuery);
-      if (sequence !== this.searchSequence) return;
-      status.remove();
-      this.renderSection(root, `\u641C\u7D22\u7ED3\u679C\uFF08${files.length}\uFF09`, files, "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0\u3002", true);
+      results.createDiv({ text: "\u6B63\u5728\u641C\u7D22\u2026", cls: "ov-search-status" });
+      const files = await this.plugin.searchFiles(this.searchQuery);
+      if (sequence !== this.searchSequence || !results.isConnected) return;
+      results.empty();
+      this.renderSection(results, `\u641C\u7D22\u7ED3\u679C\uFF08${files.length}\uFF09`, files, "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0\u3002", true);
     } else {
-      this.renderDirectory(root);
+      this.renderDirectory(results);
     }
   }
   renderDirectory(root) {

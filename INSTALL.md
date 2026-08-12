@@ -4,7 +4,7 @@
 
 ## 下载
 
-[下载最新版 obsidian-viewer.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/latest/download/obsidian-viewer.zip)
+[下载 obsidian-viewer-1.2.8.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.8/obsidian-viewer-1.2.8.zip)
 
 ZIP 内已经包含完整的插件文件夹：
 

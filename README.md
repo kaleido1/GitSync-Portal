@@ -2,13 +2,13 @@
 
 Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使用的原生 Obsidian 插件。它提供阅读工作台、全文搜索、收藏、阅读历史、阅读显示控制、互动测验，以及基于 GitHub API 的跨平台 Vault 双向同步。
 
-当前版本：`1.2.7`
+当前版本：`1.2.8`
 
 ## 下载 ZIP 安装（全平台）
 
 同一个安装包支持 Android、iOS、Windows、macOS 和 Linux：
 
-[下载 obsidian-viewer-1.2.7.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.7/obsidian-viewer-1.2.7.zip)
+[下载 obsidian-viewer-1.2.8.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.8/obsidian-viewer-1.2.8.zip)
 
 将 ZIP 解压到 `<Vault>/.obsidian/plugins/`。安装后应得到 `<Vault>/.obsidian/plugins/obsidian-viewer/`，其中直接包含 `main.js`、`manifest.json` 和 `styles.css`。重新加载 Obsidian，再到“设置 → 第三方插件”启用插件。各平台的具体位置和更新方法见 [INSTALL.md](INSTALL.md)。
 
@@ -16,7 +16,7 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 
 - 首页、文件、收藏和阅读历史工作台
 - 文件页按当前目录按文件名浏览文件与文件夹，支持进入文件夹、上一级、后退和前进
-- 文件名与 Markdown 正文全文搜索，搜索条保持圆角外框聚焦样式
+- 文件名与 Markdown 正文全文搜索，支持中文输入法组字和连续键入，搜索条保持圆角外框聚焦样式
 - 笔记和文件夹均可收藏，收藏页可直接打开笔记或进入文件夹
 - 当前笔记目录与标题跳转
 - 字号、行距、正文宽度、段落间距和专注阅读模式
@@ -34,7 +34,7 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 
 ### 手动安装
 
-1. 下载 [obsidian-viewer-1.2.7.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.7/obsidian-viewer-1.2.7.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
+1. 下载 [obsidian-viewer-1.2.8.zip](https://github.com/kaleido1/Obsidian_Viewer/releases/download/1.2.8/obsidian-viewer-1.2.8.zip)，或自行构建 `manifest.json`、`main.js` 和 `styles.css`。
 2. 将 `obsidian-viewer` 文件夹放入：
 
    ```text
