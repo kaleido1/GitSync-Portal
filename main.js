@@ -30,6 +30,7 @@ var VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
 var LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 var LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 var HISTORY_BATCH_SIZE = 40;
+var savedDashboardScrollTop = 0;
 var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -56,6 +57,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   async onOpen() {
     this.contentEl.addClass("ov-dashboard");
+    this.registerDomEvent(this.contentEl, "scroll", () => {
+      savedDashboardScrollTop = this.contentEl.scrollTop;
+    }, { passive: true });
     await this.render();
   }
   async onClose() {
@@ -65,7 +69,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   async render() {
     const root = this.contentEl;
     const searchFocus = this.captureSearchFocus(root);
-    const scrollTop = root.scrollTop;
+    const scrollTop = root.scrollTop || savedDashboardScrollTop;
     root.empty();
     root.addClass("ov-dashboard");
     const header = root.createDiv({ cls: "ov-dashboard-header" });
@@ -85,7 +89,17 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
     if (this.activeTab === "favorites") this.renderTrackedItems(root, this.plugin.t("tabFavorites"), this.plugin.settings.favorites, this.plugin.t("noFavorites"), true);
     if (this.activeTab === "history") this.renderHistory(root);
-    root.scrollTop = scrollTop;
+    this.restoreScrollTop(scrollTop);
+  }
+  restoreScrollTop(scrollTop) {
+    savedDashboardScrollTop = scrollTop;
+    this.contentEl.scrollTop = scrollTop;
+    window.requestAnimationFrame(() => {
+      this.contentEl.scrollTop = savedDashboardScrollTop;
+      window.requestAnimationFrame(() => {
+        this.contentEl.scrollTop = savedDashboardScrollTop;
+      });
+    });
   }
   renderTabs(root) {
     const tabs = root.createDiv({ cls: "ov-tabs", attr: { role: "tablist" } });
