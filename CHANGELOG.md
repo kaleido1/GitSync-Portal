@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1] - 2026-08-12
+
+### Changed
+
+- Renamed the plugin and repository from GitSync Port to GitSync Portal (`gitsync-portal`).
+- Added migration from both earlier plugin IDs, including settings, shared state, local sync state, layouts, and SecretStorage tokens.
+- Updated the release ZIP layout, documentation, and repository links for the final name.
+
 ## [2.0.0] - 2026-08-12
 
 ### Changed
@@ -10,8 +18,8 @@
 
 ### Added
 
-- Added a plugin language selector with system/Obsidian language detection and 21 selectable languages.
-- Added full interface translations for English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, German, and Italian, plus major-navigation translations with English fallback for additional Obsidian locales.
+- Added a plugin language selector with system/Obsidian language detection and 22 selectable languages.
+- Added complete English and Simplified Chinese translations, broad coverage for Traditional Chinese, Japanese, Korean, Spanish, German, and Italian, plus major-navigation translations with English fallback for additional Obsidian locales.
 - Added active-file highlighting in dashboard lists.
 - Preserved dashboard scroll position across refreshes so file selection and background updates no longer jump to the top.
 

@@ -1,12 +1,13 @@
 import { ItemView, TAbstractFile, TFile, TFolder, WorkspaceLeaf, setIcon } from "obsidian";
-import type GitSyncPortPlugin from "../main";
+import type GitSyncPortalPlugin from "../main";
 
-export const VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
+export const VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
+export const LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
 
-export class GitSyncPortDashboardView extends ItemView {
+export class GitSyncPortalDashboardView extends ItemView {
   private activeTab: DashboardTab = "home";
   private searchQuery = "";
   private searchSequence = 0;
@@ -16,12 +17,12 @@ export class GitSyncPortDashboardView extends ItemView {
   private folderBackStack: string[] = [];
   private folderForwardStack: string[] = [];
 
-  constructor(leaf: WorkspaceLeaf, private readonly plugin: GitSyncPortPlugin) {
+  constructor(leaf: WorkspaceLeaf, private readonly plugin: GitSyncPortalPlugin) {
     super(leaf);
   }
 
   getViewType(): string {
-    return VIEW_TYPE_GITSYNC_PORT;
+    return VIEW_TYPE_GITSYNC_PORTAL;
   }
 
   getDisplayText(): string {

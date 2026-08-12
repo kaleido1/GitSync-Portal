@@ -29,10 +29,10 @@ export type ResolvedLanguage = Exclude<LanguageSetting, "auto">;
 type TranslationValue = string | number;
 
 const EN = {
-  appName: "GitSync Port",
+  appName: "GitSync Portal",
   settingsIntro: "The dashboard, search, favorites, history, and interactive quizzes are stored in this vault's plugin data.",
   language: "Language",
-  languageDescription: "Choose the language used by GitSync Port. System default follows the language selected in Obsidian.",
+  languageDescription: "Choose the language used by GitSync Portal. System default follows the language selected in Obsidian.",
   syncSection: "Cross-platform GitHub sync",
   syncDescription: "Two-way sync through the GitHub REST API without system Git, so it works on Android, iOS, Windows, macOS, and Linux. The first sync keeps files unique to either side. If the same path conflicts, the newer version wins and the older version is preserved as a conflict copy.",
   githubToken: "GitHub token",
@@ -76,7 +76,7 @@ const EN = {
   useCurrentNoteDescription: "Set the currently open Markdown note as home.",
   setAsHome: "Set as home",
   openDashboardOnStartup: "Open dashboard on startup",
-  openDashboardOnStartupDescription: "Open GitSync Port in the left sidebar after Obsidian finishes loading the layout.",
+  openDashboardOnStartupDescription: "Open GitSync Portal in the left sidebar after Obsidian finishes loading the layout.",
   historyLimit: "Reading history limit",
   historyLimitDescription: "Keep the 10–500 most recent notes.",
   readingDisplay: "Reading display",
@@ -112,7 +112,7 @@ const EN = {
   recentReadingEmpty: "Notes you open will appear here.",
   githubSync: "Cross-platform GitHub sync",
   defaultBranch: "Default branch",
-  tokenMissing: "No GitHub token is saved. Open GitSync Port settings first.",
+  tokenMissing: "No GitHub token is saved. Open GitSync Portal settings first.",
   searchPlaceholder: "Search filenames and note contents…",
   searching: "Searching…",
   searchResults: "Search results ({count})",
@@ -129,7 +129,7 @@ const EN = {
   noHistory: "No reading history yet.",
   pageOutline: "On this page",
   noHeadings: "The current note has no headings.",
-  openDashboard: "Open GitSync Port",
+  openDashboard: "Open GitSync Portal",
   openReadingDashboard: "Open reading dashboard",
   syncGitHubNow: "Sync with GitHub now",
   openHomeNote: "Open home note",
@@ -147,8 +147,8 @@ const EN = {
   removedFavorite: "Removed favorite: {name}",
   addedFavorite: "Added favorite: {name}",
   homeSet: "Home note set to: {name}",
-  sharedStateReadFailed: "GitSync Port could not read the shared favorites/history file: {error}",
-  sharedStateWriteFailed: "GitSync Port could not save the shared favorites/history file: {error}",
+  sharedStateReadFailed: "GitSync Portal could not read the shared favorites/history file: {error}",
+  sharedStateWriteFailed: "GitSync Portal could not save the shared favorites/history file: {error}",
   statusConnecting: "Connecting to GitHub…",
   statusRemoteRetry: "The remote just changed. Retrying sync (attempt {attempt})…",
   syncRetryFailed: "Sync retries failed.",
@@ -160,7 +160,7 @@ const EN = {
   statusCommitRetry: "The remote just changed. Committing against the latest version (attempt {attempt})…",
   remoteSamePathChanged: "The remote changed the same path during sync. Reconciling again.",
   remoteContinuouslyChanged: "The remote kept changing, so the sync commit failed.",
-  tokenRequired: "Save a GitHub token in GitSync Port settings first.",
+  tokenRequired: "Save a GitHub token in GitSync Portal settings first.",
   remoteTreeTooLarge: "The remote repository tree exceeds GitHub's recursive read limit. Sync stopped to avoid missing files.",
   statusScanning: "Scanning: {path}",
   unsupportedEncoding: "GitHub returned an unsupported encoding for {path}.",
@@ -173,7 +173,7 @@ const EN = {
   tokenInvalid: "The GitHub token is invalid or expired.",
   tokenForbidden: "The GitHub token lacks repository Contents read/write permission, or the request was rate-limited.",
   repositoryNotFound: "Repository, branch, or commit not found. Check the token scope and sync settings.",
-  remoteChanged: "The remote changed during sync, so GitSync Port restarted automatically{detail}",
+  remoteChanged: "The remote changed during sync, so GitSync Portal restarted automatically{detail}",
   apiFailed: "GitHub API request failed (HTTP {status}){detail}",
   repositoryFormat: "Repository must use the owner/repository format.",
   quizDefinition: "Quiz definition",
@@ -206,7 +206,7 @@ export type TranslationKey = keyof typeof EN;
 const ZH: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "阅读工作台、搜索、收藏、历史和互动测验均保存在当前 Vault 的插件数据中。",
   language: "语言",
-  languageDescription: "选择 GitSync Port 使用的语言；“跟随系统”会采用 Obsidian 当前选择的语言。",
+  languageDescription: "选择 GitSync Portal 使用的语言；“跟随系统”会采用 Obsidian 当前选择的语言。",
   syncSection: "GitHub 跨平台同步",
   syncDescription: "通过 GitHub REST API 双向同步，不调用系统 Git，因此可在 Android、iOS、Windows、macOS 和 Linux 使用。首次同步会保留两端独有文件；同一路径冲突时，较新的版本作为主文件，较旧版本保存为 conflict 副本。",
   githubTokenDescription: "建议使用只授权此仓库、Contents: Read and write 的 fine-grained token。Token 由 Obsidian SecretStorage 保存，不写入插件 data.json。",
@@ -249,7 +249,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   useCurrentNoteDescription: "把当前打开的 Markdown 笔记设为首页。",
   setAsHome: "设为首页",
   openDashboardOnStartup: "启动时打开工作台",
-  openDashboardOnStartupDescription: "Obsidian 完成布局加载后在左侧打开 GitSync Port。",
+  openDashboardOnStartupDescription: "Obsidian 完成布局加载后在左侧打开 GitSync Portal。",
   historyLimit: "阅读历史上限",
   historyLimitDescription: "保留最近 10–500 篇笔记。",
   readingDisplay: "阅读显示",
@@ -285,7 +285,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   recentReadingEmpty: "打开过的笔记会出现在这里。",
   githubSync: "GitHub 跨平台同步",
   defaultBranch: "默认分支",
-  tokenMissing: "尚未保存 GitHub token，请先前往 GitSync Port 设置。",
+  tokenMissing: "尚未保存 GitHub token，请先前往 GitSync Portal 设置。",
   searchPlaceholder: "搜索文件名和正文…",
   searching: "正在搜索…",
   searchResults: "搜索结果（{count}）",
@@ -302,7 +302,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   noHistory: "暂无阅读历史。",
   pageOutline: "本页目录",
   noHeadings: "当前笔记没有标题。",
-  openDashboard: "打开 GitSync Port",
+  openDashboard: "打开 GitSync Portal",
   openReadingDashboard: "打开阅读工作台",
   syncGitHubNow: "立即与 GitHub 双向同步",
   openHomeNote: "打开首页笔记",
@@ -320,8 +320,8 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   removedFavorite: "已取消收藏：{name}",
   addedFavorite: "已收藏：{name}",
   homeSet: "首页已设为：{name}",
-  sharedStateReadFailed: "GitSync Port 共享收藏/历史文件读取失败：{error}",
-  sharedStateWriteFailed: "GitSync Port 共享收藏/历史文件保存失败：{error}",
+  sharedStateReadFailed: "GitSync Portal 共享收藏/历史文件读取失败：{error}",
+  sharedStateWriteFailed: "GitSync Portal 共享收藏/历史文件保存失败：{error}",
   statusConnecting: "正在连接 GitHub…",
   statusRemoteRetry: "远端刚刚更新，正在重新同步（第 {attempt} 次）…",
   syncRetryFailed: "同步重试失败。",
@@ -333,7 +333,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   statusCommitRetry: "远端刚刚更新，正在基于最新版本提交（第 {attempt} 次）…",
   remoteSamePathChanged: "远端在同步期间修改了同一路径，正在重新合并。",
   remoteContinuouslyChanged: "远端持续变化，同步提交失败。",
-  tokenRequired: "请先在 GitSync Port 设置中保存 GitHub token。",
+  tokenRequired: "请先在 GitSync Portal 设置中保存 GitHub token。",
   remoteTreeTooLarge: "远端仓库文件树超过 GitHub 单次递归读取上限，已停止同步以避免遗漏文件。",
   statusScanning: "正在扫描：{path}",
   unsupportedEncoding: "GitHub 返回了不支持的编码：{path}",
@@ -377,7 +377,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
 const ZH_TW: Partial<Record<TranslationKey, string>> = {
   ...ZH,
   language: "語言",
-  languageDescription: "選擇 GitSync Port 使用的語言；「跟隨系統」會採用 Obsidian 目前選擇的語言。",
+  languageDescription: "選擇 GitSync Portal 使用的語言；「跟隨系統」會採用 Obsidian 目前選擇的語言。",
   settingsIntro: "閱讀工作台、搜尋、收藏、歷史和互動測驗均儲存在目前 Vault 的外掛資料中。",
   syncDescription: "透過 GitHub REST API 雙向同步，不呼叫系統 Git，因此可在 Android、iOS、Windows、macOS 和 Linux 使用。首次同步會保留兩端獨有檔案；同一路徑衝突時，較新的版本作為主檔案，較舊版本儲存為 conflict 副本。",
   repository: "儲存庫",
@@ -416,7 +416,7 @@ const ZH_TW: Partial<Record<TranslationKey, string>> = {
 const JA: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "ダッシュボード、検索、お気に入り、履歴、インタラクティブクイズは、この Vault のプラグインデータに保存されます。",
   language: "言語",
-  languageDescription: "GitSync Port で使用する言語を選択します。「システム設定」は Obsidian で選択中の言語に従います。",
+  languageDescription: "GitSync Portal で使用する言語を選択します。「システム設定」は Obsidian で選択中の言語に従います。",
   syncSection: "GitHub クロスプラットフォーム同期",
   githubTokenDescription: "このリポジトリだけに Contents: Read and write を許可した fine-grained token を推奨します。Token は Obsidian SecretStorage に保存されます。",
   clearToken: "Token を削除",
@@ -511,7 +511,7 @@ const JA: Partial<Record<TranslationKey, string>> = {
 const KO: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "대시보드, 검색, 즐겨찾기, 기록 및 대화형 퀴즈는 현재 Vault의 플러그인 데이터에 저장됩니다.",
   language: "언어",
-  languageDescription: "GitSync Port에서 사용할 언어를 선택합니다. 시스템 기본값은 Obsidian에서 선택한 언어를 따릅니다.",
+  languageDescription: "GitSync Portal에서 사용할 언어를 선택합니다. 시스템 기본값은 Obsidian에서 선택한 언어를 따릅니다.",
   syncSection: "GitHub 크로스 플랫폼 동기화",
   githubTokenDescription: "이 저장소에만 Contents: Read and write 권한을 부여한 fine-grained token을 권장합니다. Token은 Obsidian SecretStorage에 저장됩니다.",
   clearToken: "Token 지우기",
@@ -606,7 +606,7 @@ const KO: Partial<Record<TranslationKey, string>> = {
 const ES: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "El panel, la búsqueda, los favoritos, el historial y los cuestionarios interactivos se guardan en los datos del complemento de este Vault.",
   language: "Idioma",
-  languageDescription: "Elige el idioma de GitSync Port. La opción del sistema sigue el idioma seleccionado en Obsidian.",
+  languageDescription: "Elige el idioma de GitSync Portal. La opción del sistema sigue el idioma seleccionado en Obsidian.",
   syncSection: "Sincronización multiplataforma con GitHub",
   syncDescription: "Sincronización bidireccional mediante la API REST de GitHub, sin depender del Git del sistema. Funciona en Android, iOS, Windows, macOS y Linux. La primera sincronización conserva los archivos exclusivos de ambos lados; si una ruta entra en conflicto, se conserva la versión más reciente y la anterior se guarda como copia de conflicto.",
   githubTokenDescription: "Usa un token detallado limitado a este repositorio con Contents: Read and write. Obsidian SecretStorage evita que el token se guarde en data.json.",
@@ -649,7 +649,7 @@ const ES: Partial<Record<TranslationKey, string>> = {
   useCurrentNoteDescription: "Establece la nota Markdown abierta como nota de inicio.",
   setAsHome: "Establecer como inicio",
   openDashboardOnStartup: "Abrir el panel al iniciar",
-  openDashboardOnStartupDescription: "Abre GitSync Port en la barra lateral izquierda después de cargar el diseño de Obsidian.",
+  openDashboardOnStartupDescription: "Abre GitSync Portal en la barra lateral izquierda después de cargar el diseño de Obsidian.",
   historyLimit: "Límite del historial de lectura",
   historyLimitDescription: "Conserva las 10–500 notas más recientes.",
   readingDisplay: "Vista de lectura",
@@ -684,7 +684,7 @@ const ES: Partial<Record<TranslationKey, string>> = {
   recentReadingEmpty: "Las notas abiertas aparecerán aquí.",
   githubSync: "Sincronización multiplataforma con GitHub",
   defaultBranch: "Rama predeterminada",
-  tokenMissing: "No hay ningún token de GitHub guardado. Abre primero los ajustes de GitSync Port.",
+  tokenMissing: "No hay ningún token de GitHub guardado. Abre primero los ajustes de GitSync Portal.",
   searchPlaceholder: "Buscar nombres y contenido de notas…",
   searching: "Buscando…",
   searchResults: "Resultados ({count})",
@@ -711,7 +711,7 @@ const ES: Partial<Record<TranslationKey, string>> = {
   statusPulling: "Aplicando cambio remoto: {path}",
   statusPushing: "Subiendo cambio local: {path}",
   statusComplete: "Sincronización completada",
-  tokenRequired: "Guarda primero un token de GitHub en los ajustes de GitSync Port.",
+  tokenRequired: "Guarda primero un token de GitHub en los ajustes de GitSync Portal.",
   tokenInvalid: "El token de GitHub no es válido o ha caducado.",
   repositoryNotFound: "No se encontró el repositorio, la rama o el commit. Comprueba el token y los ajustes.",
   repositoryFormat: "El repositorio debe usar el formato propietario/repositorio.",
@@ -733,7 +733,7 @@ const ES: Partial<Record<TranslationKey, string>> = {
 const DE: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "Dashboard, Suche, Favoriten, Verlauf und interaktive Quizze werden in den Plugin-Daten dieses Vaults gespeichert.",
   language: "Sprache",
-  languageDescription: "Wähle die Sprache von GitSync Port. Die Systemeinstellung folgt der in Obsidian ausgewählten Sprache.",
+  languageDescription: "Wähle die Sprache von GitSync Portal. Die Systemeinstellung folgt der in Obsidian ausgewählten Sprache.",
   syncSection: "Plattformübergreifende GitHub-Synchronisierung",
   syncDescription: "Bidirektionale Synchronisierung über die GitHub REST API ohne System-Git. Sie funktioniert unter Android, iOS, Windows, macOS und Linux. Beim ersten Abgleich bleiben Dateien beider Seiten erhalten; bei einem Pfadkonflikt gewinnt die neuere Version und die ältere wird als Konfliktkopie gespeichert.",
   githubTokenDescription: "Empfohlen wird ein auf dieses Repository begrenztes Fine-grained Token mit Contents: Read and write. Obsidian SecretStorage hält das Token aus data.json heraus.",
@@ -776,7 +776,7 @@ const DE: Partial<Record<TranslationKey, string>> = {
   useCurrentNoteDescription: "Die aktuell geöffnete Markdown-Notiz als Startnotiz festlegen.",
   setAsHome: "Als Start festlegen",
   openDashboardOnStartup: "Dashboard beim Start öffnen",
-  openDashboardOnStartupDescription: "GitSync Port nach dem Laden des Obsidian-Layouts in der linken Seitenleiste öffnen.",
+  openDashboardOnStartupDescription: "GitSync Portal nach dem Laden des Obsidian-Layouts in der linken Seitenleiste öffnen.",
   historyLimit: "Limit des Leseverlaufs",
   historyLimitDescription: "Die 10–500 zuletzt gelesenen Notizen behalten.",
   readingDisplay: "Leseansicht",
@@ -834,7 +834,7 @@ const DE: Partial<Record<TranslationKey, string>> = {
   statusPulling: "Entfernte Änderung wird angewendet: {path}",
   statusPushing: "Lokale Änderung wird hochgeladen: {path}",
   statusComplete: "Synchronisierung abgeschlossen",
-  tokenRequired: "Speichere zuerst ein GitHub-Token in den Einstellungen von GitSync Port.",
+  tokenRequired: "Speichere zuerst ein GitHub-Token in den Einstellungen von GitSync Portal.",
   tokenInvalid: "Das GitHub-Token ist ungültig oder abgelaufen.",
   repositoryNotFound: "Repository, Branch oder Commit nicht gefunden. Token und Einstellungen prüfen.",
   repositoryFormat: "Das Repository muss das Format Eigentümer/Repository verwenden.",
@@ -856,7 +856,7 @@ const DE: Partial<Record<TranslationKey, string>> = {
 const IT: Partial<Record<TranslationKey, string>> = {
   settingsIntro: "Dashboard, ricerca, preferiti, cronologia e quiz interattivi vengono salvati nei dati del plugin di questo Vault.",
   language: "Lingua",
-  languageDescription: "Scegli la lingua di GitSync Port. L'impostazione di sistema segue la lingua selezionata in Obsidian.",
+  languageDescription: "Scegli la lingua di GitSync Portal. L'impostazione di sistema segue la lingua selezionata in Obsidian.",
   syncSection: "Sincronizzazione GitHub multipiattaforma",
   syncDescription: "Sincronizzazione bidirezionale tramite API REST di GitHub senza usare Git di sistema. Funziona su Android, iOS, Windows, macOS e Linux. La prima sincronizzazione conserva i file presenti su un solo lato; in caso di conflitto sullo stesso percorso, prevale la versione più recente e quella precedente viene salvata come copia di conflitto.",
   githubTokenDescription: "Usa un fine-grained token limitato a questo repository con Contents: Read and write. Obsidian SecretStorage impedisce che il token venga scritto in data.json.",
@@ -899,7 +899,7 @@ const IT: Partial<Record<TranslationKey, string>> = {
   useCurrentNoteDescription: "Imposta la nota Markdown aperta come nota iniziale.",
   setAsHome: "Imposta come iniziale",
   openDashboardOnStartup: "Apri dashboard all'avvio",
-  openDashboardOnStartupDescription: "Apre GitSync Port nella barra laterale sinistra dopo il caricamento del layout di Obsidian.",
+  openDashboardOnStartupDescription: "Apre GitSync Portal nella barra laterale sinistra dopo il caricamento del layout di Obsidian.",
   historyLimit: "Limite cronologia di lettura",
   historyLimitDescription: "Conserva le 10–500 note più recenti.",
   readingDisplay: "Visualizzazione di lettura",
@@ -957,7 +957,7 @@ const IT: Partial<Record<TranslationKey, string>> = {
   statusPulling: "Applicazione modifica remota: {path}",
   statusPushing: "Caricamento modifica locale: {path}",
   statusComplete: "Sincronizzazione completata",
-  tokenRequired: "Salva prima un token GitHub nelle impostazioni di GitSync Port.",
+  tokenRequired: "Salva prima un token GitHub nelle impostazioni di GitSync Portal.",
   tokenInvalid: "Il token GitHub non è valido o è scaduto.",
   repositoryNotFound: "Repository, branch o commit non trovato. Controlla token e impostazioni.",
   repositoryFormat: "Il repository deve usare il formato proprietario/repository.",
@@ -977,7 +977,7 @@ const IT: Partial<Record<TranslationKey, string>> = {
 };
 
 const FR: Partial<Record<TranslationKey, string>> = {
-  language: "Langue", languageDescription: "Choisissez la langue de GitSync Port. Le réglage système suit la langue sélectionnée dans Obsidian.",
+  language: "Langue", languageDescription: "Choisissez la langue de GitSync Portal. Le réglage système suit la langue sélectionnée dans Obsidian.",
   syncSection: "Synchronisation GitHub multiplateforme", repository: "Dépôt", branch: "Branche", deviceName: "Nom de l’appareil",
   testAndSync: "Tester et synchroniser", testConnection: "Tester la connexion", testing: "Test en cours…", syncNow: "Synchroniser", syncing: "Synchronisation…",
   syncOnStartup: "Synchroniser au démarrage", syncOnSave: "Synchroniser après l’enregistrement", periodicSync: "Synchronisation périodique",
@@ -990,7 +990,7 @@ const FR: Partial<Record<TranslationKey, string>> = {
 };
 
 const AR: Partial<Record<TranslationKey, string>> = {
-  language: "اللغة", languageDescription: "اختر لغة GitSync Port. يتبع إعداد النظام اللغة المحددة في Obsidian.",
+  language: "اللغة", languageDescription: "اختر لغة GitSync Portal. يتبع إعداد النظام اللغة المحددة في Obsidian.",
   syncSection: "مزامنة GitHub عبر المنصات", repository: "المستودع", branch: "الفرع", deviceName: "اسم الجهاز",
   testAndSync: "اختبار ومزامنة", testConnection: "اختبار الاتصال", syncNow: "مزامنة الآن", syncing: "جارٍ المزامنة…",
   syncOnStartup: "المزامنة عند التشغيل", syncOnSave: "المزامنة بعد الحفظ", periodicSync: "مزامنة دورية", ignoredPaths: "المسارات المتجاهلة",
@@ -1001,7 +1001,7 @@ const AR: Partial<Record<TranslationKey, string>> = {
 };
 
 const BN: Partial<Record<TranslationKey, string>> = {
-  language: "ভাষা", languageDescription: "GitSync Port-এর ভাষা বেছে নিন। সিস্টেম ডিফল্ট Obsidian-এ নির্বাচিত ভাষা অনুসরণ করে।",
+  language: "ভাষা", languageDescription: "GitSync Portal-এর ভাষা বেছে নিন। সিস্টেম ডিফল্ট Obsidian-এ নির্বাচিত ভাষা অনুসরণ করে।",
   syncSection: "ক্রস-প্ল্যাটফর্ম GitHub সিঙ্ক", repository: "রিপোজিটরি", branch: "ব্রাঞ্চ", deviceName: "ডিভাইসের নাম",
   testAndSync: "পরীক্ষা ও সিঙ্ক", testConnection: "সংযোগ পরীক্ষা", syncNow: "এখন সিঙ্ক", syncing: "সিঙ্ক হচ্ছে…",
   syncOnStartup: "চালুর সময় সিঙ্ক", syncOnSave: "সেভের পরে সিঙ্ক", periodicSync: "নিয়মিত সিঙ্ক", ignoredPaths: "উপেক্ষিত পাথ",
@@ -1012,7 +1012,7 @@ const BN: Partial<Record<TranslationKey, string>> = {
 };
 
 const NL: Partial<Record<TranslationKey, string>> = {
-  language: "Taal", languageDescription: "Kies de taal van GitSync Port. De systeeminstelling volgt de taal die in Obsidian is gekozen.",
+  language: "Taal", languageDescription: "Kies de taal van GitSync Portal. De systeeminstelling volgt de taal die in Obsidian is gekozen.",
   syncSection: "Platformonafhankelijke GitHub-synchronisatie", repository: "Repository", branch: "Branch", deviceName: "Apparaatnaam",
   testAndSync: "Testen en synchroniseren", testConnection: "Verbinding testen", syncNow: "Nu synchroniseren", syncing: "Synchroniseren…",
   syncOnStartup: "Synchroniseren bij opstarten", syncOnSave: "Synchroniseren na opslaan", periodicSync: "Periodiek synchroniseren", ignoredPaths: "Genegeerde paden",
@@ -1023,7 +1023,7 @@ const NL: Partial<Record<TranslationKey, string>> = {
 };
 
 const PL: Partial<Record<TranslationKey, string>> = {
-  language: "Język", languageDescription: "Wybierz język GitSync Port. Ustawienie systemowe używa języka wybranego w Obsidian.",
+  language: "Język", languageDescription: "Wybierz język GitSync Portal. Ustawienie systemowe używa języka wybranego w Obsidian.",
   syncSection: "Wieloplatformowa synchronizacja GitHub", repository: "Repozytorium", branch: "Gałąź", deviceName: "Nazwa urządzenia",
   testAndSync: "Testuj i synchronizuj", testConnection: "Testuj połączenie", syncNow: "Synchronizuj teraz", syncing: "Synchronizacja…",
   syncOnStartup: "Synchronizuj przy uruchomieniu", syncOnSave: "Synchronizuj po zapisaniu", periodicSync: "Synchronizacja okresowa", ignoredPaths: "Ignorowane ścieżki",
@@ -1034,7 +1034,7 @@ const PL: Partial<Record<TranslationKey, string>> = {
 };
 
 const PT: Partial<Record<TranslationKey, string>> = {
-  language: "Idioma", languageDescription: "Escolha o idioma do GitSync Port. A opção do sistema segue o idioma selecionado no Obsidian.",
+  language: "Idioma", languageDescription: "Escolha o idioma do GitSync Portal. A opção do sistema segue o idioma selecionado no Obsidian.",
   syncSection: "Sincronização GitHub multiplataforma", repository: "Repositório", branch: "Branch", deviceName: "Nome do dispositivo",
   testAndSync: "Testar e sincronizar", testConnection: "Testar ligação", syncNow: "Sincronizar agora", syncing: "A sincronizar…",
   syncOnStartup: "Sincronizar ao iniciar", syncOnSave: "Sincronizar após guardar", periodicSync: "Sincronização periódica", ignoredPaths: "Caminhos ignorados",
@@ -1051,7 +1051,7 @@ const PT_BR: Partial<Record<TranslationKey, string>> = {
 };
 
 const RO: Partial<Record<TranslationKey, string>> = {
-  language: "Limbă", languageDescription: "Alege limba GitSync Port. Setarea sistemului urmează limba selectată în Obsidian.",
+  language: "Limbă", languageDescription: "Alege limba GitSync Portal. Setarea sistemului urmează limba selectată în Obsidian.",
   syncSection: "Sincronizare GitHub multiplatformă", repository: "Repository", branch: "Ramură", deviceName: "Numele dispozitivului",
   testAndSync: "Testează și sincronizează", testConnection: "Testează conexiunea", syncNow: "Sincronizează acum", syncing: "Se sincronizează…",
   syncOnStartup: "Sincronizare la pornire", syncOnSave: "Sincronizare după salvare", periodicSync: "Sincronizare periodică", ignoredPaths: "Căi ignorate",
@@ -1062,7 +1062,7 @@ const RO: Partial<Record<TranslationKey, string>> = {
 };
 
 const RU: Partial<Record<TranslationKey, string>> = {
-  language: "Язык", languageDescription: "Выберите язык GitSync Port. Системный вариант использует язык, выбранный в Obsidian.",
+  language: "Язык", languageDescription: "Выберите язык GitSync Portal. Системный вариант использует язык, выбранный в Obsidian.",
   syncSection: "Кроссплатформенная синхронизация GitHub", repository: "Репозиторий", branch: "Ветка", deviceName: "Имя устройства",
   testAndSync: "Проверка и синхронизация", testConnection: "Проверить соединение", syncNow: "Синхронизировать", syncing: "Синхронизация…",
   syncOnStartup: "Синхронизация при запуске", syncOnSave: "Синхронизация после сохранения", periodicSync: "Периодическая синхронизация", ignoredPaths: "Игнорируемые пути",
@@ -1073,7 +1073,7 @@ const RU: Partial<Record<TranslationKey, string>> = {
 };
 
 const SV: Partial<Record<TranslationKey, string>> = {
-  language: "Språk", languageDescription: "Välj språk för GitSync Port. Systeminställningen följer språket som valts i Obsidian.",
+  language: "Språk", languageDescription: "Välj språk för GitSync Portal. Systeminställningen följer språket som valts i Obsidian.",
   syncSection: "Plattformsoberoende GitHub-synkronisering", repository: "Katalog", branch: "Gren", deviceName: "Enhetsnamn",
   testAndSync: "Testa och synkronisera", testConnection: "Testa anslutning", syncNow: "Synkronisera nu", syncing: "Synkroniserar…",
   syncOnStartup: "Synkronisera vid start", syncOnSave: "Synkronisera efter sparande", periodicSync: "Periodisk synkronisering", ignoredPaths: "Ignorerade sökvägar",
@@ -1084,7 +1084,7 @@ const SV: Partial<Record<TranslationKey, string>> = {
 };
 
 const TR: Partial<Record<TranslationKey, string>> = {
-  language: "Dil", languageDescription: "GitSync Port dilini seçin. Sistem seçeneği Obsidian'da seçili dili izler.",
+  language: "Dil", languageDescription: "GitSync Portal dilini seçin. Sistem seçeneği Obsidian'da seçili dili izler.",
   syncSection: "Platformlar arası GitHub eşitleme", repository: "Depo", branch: "Dal", deviceName: "Cihaz adı",
   testAndSync: "Test et ve eşitle", testConnection: "Bağlantıyı test et", syncNow: "Şimdi eşitle", syncing: "Eşitleniyor…",
   syncOnStartup: "Başlangıçta eşitle", syncOnSave: "Kaydettikten sonra eşitle", periodicSync: "Periyodik eşitleme", ignoredPaths: "Yok sayılan yollar",
@@ -1095,7 +1095,7 @@ const TR: Partial<Record<TranslationKey, string>> = {
 };
 
 const UK: Partial<Record<TranslationKey, string>> = {
-  language: "Мова", languageDescription: "Виберіть мову GitSync Port. Системний варіант використовує мову, вибрану в Obsidian.",
+  language: "Мова", languageDescription: "Виберіть мову GitSync Portal. Системний варіант використовує мову, вибрану в Obsidian.",
   syncSection: "Кросплатформна синхронізація GitHub", repository: "Репозиторій", branch: "Гілка", deviceName: "Назва пристрою",
   testAndSync: "Перевірити й синхронізувати", testConnection: "Перевірити з’єднання", syncNow: "Синхронізувати", syncing: "Синхронізація…",
   syncOnStartup: "Синхронізація під час запуску", syncOnSave: "Синхронізація після збереження", periodicSync: "Періодична синхронізація", ignoredPaths: "Ігноровані шляхи",
@@ -1106,7 +1106,7 @@ const UK: Partial<Record<TranslationKey, string>> = {
 };
 
 const VI: Partial<Record<TranslationKey, string>> = {
-  language: "Ngôn ngữ", languageDescription: "Chọn ngôn ngữ cho GitSync Port. Tùy chọn hệ thống dùng ngôn ngữ đã chọn trong Obsidian.",
+  language: "Ngôn ngữ", languageDescription: "Chọn ngôn ngữ cho GitSync Portal. Tùy chọn hệ thống dùng ngôn ngữ đã chọn trong Obsidian.",
   syncSection: "Đồng bộ GitHub đa nền tảng", repository: "Kho lưu trữ", branch: "Nhánh", deviceName: "Tên thiết bị",
   testAndSync: "Kiểm tra và đồng bộ", testConnection: "Kiểm tra kết nối", syncNow: "Đồng bộ ngay", syncing: "Đang đồng bộ…",
   syncOnStartup: "Đồng bộ khi khởi động", syncOnSave: "Đồng bộ sau khi lưu", periodicSync: "Đồng bộ định kỳ", ignoredPaths: "Đường dẫn bỏ qua",

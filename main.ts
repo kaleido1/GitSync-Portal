@@ -7,28 +7,36 @@ import {
   TFolder,
   normalizePath,
 } from "obsidian";
-import { GitSyncPortDashboardView, LEGACY_VIEW_TYPE_VIEWER, VIEW_TYPE_GITSYNC_PORT } from "./src/viewer-view";
-import { GitSyncPortSettingTab } from "./src/settings";
+import { GitSyncPortalDashboardView, LEGACY_VIEW_TYPE_GITSYNC_PORT, LEGACY_VIEW_TYPE_VIEWER, VIEW_TYPE_GITSYNC_PORTAL } from "./src/viewer-view";
+import { GitSyncPortalSettingTab } from "./src/settings";
 import { registerQuizProcessors, QuizProgress } from "./src/quiz";
 import { GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
 import { LANGUAGE_OPTIONS, LanguageSetting, TranslationKey, formatDateTime, translate } from "./src/i18n";
 
-const PLUGIN_ID = "gitsync-port";
-const LEGACY_PLUGIN_ID = "obsidian-viewer";
-const GITHUB_TOKEN_SECRET_ID = "gitsync-port-github-token";
-const LEGACY_GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
+const PLUGIN_ID = "gitsync-portal";
+const LEGACY_PLUGIN_IDS = ["gitsync-port", "obsidian-viewer"] as const;
+const GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
+const LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"] as const;
 const SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
 const LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
-const LEGACY_DATA_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/data.json`;
-const LEGACY_SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/sync-state.json`;
-const LEGACY_LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json`;
 const DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/workspace*.json",
   ".obsidian/page-preview.json",
   `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
   `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  `.obsidian/plugins/${LEGACY_PLUGIN_ID}/`,
+  ...LEGACY_PLUGIN_IDS.map((id) => `.obsidian/plugins/${id}/`),
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/",
+].join("\n");
+const GITSYNC_PORT_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/gitsync-port/local-sync-state.json",
+  ".obsidian/plugins/gitsync-port/*.conflict-*",
+  ".obsidian/plugins/obsidian-viewer/",
   ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
   ".obsidian/plugins/*/manifest.conflict-*",
   "node_modules/",
@@ -133,7 +141,7 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   lastSyncSummary: "",
 };
 
-export default class GitSyncPortPlugin extends Plugin {
+export default class GitSyncPortalPlugin extends Plugin {
   settings: ViewerSettings = { ...DEFAULT_SETTINGS };
   private searchCache = new Map<string, string>();
   private quizSaveTimer: number | null = null;
@@ -149,8 +157,9 @@ export default class GitSyncPortPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     this.migrateLegacyToken();
-    this.registerView(VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortDashboardView(leaf, this));
-    this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortDashboardView(leaf, this));
+    this.registerView(VIEW_TYPE_GITSYNC_PORTAL, (leaf) => new GitSyncPortalDashboardView(leaf, this));
+    this.registerView(LEGACY_VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortalDashboardView(leaf, this));
+    this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.addRibbonIcon("refresh-cw", this.t("openDashboard"), () => void this.activateDashboard());
 
     this.addCommand({
@@ -217,7 +226,7 @@ export default class GitSyncPortPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
 
     registerQuizProcessors(this);
-    this.addSettingTab(new GitSyncPortSettingTab(this.app, this));
+    this.addSettingTab(new GitSyncPortalSettingTab(this.app, this));
     this.applyReaderSettings();
     this.configurePeriodicSync();
 
@@ -264,7 +273,7 @@ export default class GitSyncPortPlugin extends Plugin {
     let migrated = legacyData !== null
       || loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
-    if ([PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
@@ -286,7 +295,7 @@ export default class GitSyncPortPlugin extends Plugin {
 
   getGitHubToken(): string {
     return this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)?.trim()
-      || this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)?.trim()
+      || LEGACY_GITHUB_TOKEN_SECRET_IDS.map((id) => this.app.secretStorage.getSecret(id)?.trim()).find(Boolean)
       || "";
   }
 
@@ -353,11 +362,12 @@ export default class GitSyncPortPlugin extends Plugin {
   }
 
   async activateDashboard(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT)[0]
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL)[0]
+      ?? this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT)[0]
       ?? this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeftLeaf(false) ?? this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORT, active: true });
+      await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
     }
     this.app.workspace.revealLeaf(leaf);
   }
@@ -462,12 +472,13 @@ export default class GitSyncPortPlugin extends Plugin {
 
   private async refreshDashboard(): Promise<void> {
     const leaves = [
-      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT),
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER),
     ];
     await Promise.all(leaves.map((leaf) => {
       const view = leaf.view;
-      return view instanceof GitSyncPortDashboardView ? view.render() : Promise.resolve();
+      return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
   }
 
@@ -516,10 +527,9 @@ export default class GitSyncPortPlugin extends Plugin {
 
   private async loadSyncedViewerState(): Promise<ViewerSyncedState | null> {
     const path = syncedViewerStatePath(this.app.vault.configDir);
-    const legacyPath = legacySyncedViewerStatePath(this.app.vault.configDir);
     const sourcePath = await this.app.vault.adapter.exists(path)
       ? path
-      : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+      : await firstExistingAdapterPath(this, legacyPluginPaths(this.app.vault.configDir, "sync-state.json"));
     if (!sourcePath) return null;
     try {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath)) as Partial<ViewerSyncedState>;
@@ -563,7 +573,6 @@ export default class GitSyncPortPlugin extends Plugin {
 
   private async loadLocalSyncState(loaded: Partial<ViewerSettings> | null): Promise<ViewerLocalSyncState> {
     const path = localSyncStatePath(this.app.vault.configDir);
-    const legacyPath = legacyLocalSyncStatePath(this.app.vault.configDir);
     const fallback: ViewerLocalSyncState = {
       lastSyncedCommit: typeof loaded?.lastSyncedCommit === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
       lastSyncAt: typeof loaded?.lastSyncAt === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
@@ -571,7 +580,7 @@ export default class GitSyncPortPlugin extends Plugin {
     };
     const sourcePath = await this.app.vault.adapter.exists(path)
       ? path
-      : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+      : await firstExistingAdapterPath(this, legacyPluginPaths(this.app.vault.configDir, "local-sync-state.json"));
     if (!sourcePath) return fallback;
     try {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath)) as Partial<ViewerLocalSyncState>;
@@ -608,18 +617,22 @@ export default class GitSyncPortPlugin extends Plugin {
 
   private migrateLegacyToken(): void {
     if (this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)?.trim()) return;
-    const legacyToken = this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)?.trim();
+    const legacyToken = LEGACY_GITHUB_TOKEN_SECRET_IDS
+      .map((id) => this.app.secretStorage.getSecret(id)?.trim())
+      .find(Boolean);
     if (legacyToken) this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, legacyToken);
   }
 
   private async loadLegacyPluginData(): Promise<Partial<ViewerSettings> | null> {
-    const path = normalizePath(this.app.vault.configDir ? `${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}/data.json` : LEGACY_DATA_PATH);
-    if (!await this.app.vault.adapter.exists(path)) return null;
-    try {
-      return JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerSettings>;
-    } catch {
-      return null;
+    for (const path of legacyPluginPaths(this.app.vault.configDir, "data.json")) {
+      if (!await this.app.vault.adapter.exists(path)) continue;
+      try {
+        return JSON.parse(await this.app.vault.adapter.read(path)) as Partial<ViewerSettings>;
+      } catch {
+        continue;
+      }
     }
+    return null;
   }
 }
 
@@ -631,12 +644,17 @@ function localSyncStatePath(configDir: string): string {
   return normalizePath(configDir ? `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
 }
 
-function legacySyncedViewerStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/sync-state.json` : LEGACY_SYNCED_VIEWER_STATE_PATH);
+function legacyPluginPaths(configDir: string, filename: string): string[] {
+  return LEGACY_PLUGIN_IDS.map((id) => normalizePath(configDir
+    ? `${configDir}/plugins/${id}/${filename}`
+    : `.obsidian/plugins/${id}/${filename}`));
 }
 
-function legacyLocalSyncStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json` : LEGACY_LOCAL_SYNC_STATE_PATH);
+async function firstExistingAdapterPath(plugin: GitSyncPortalPlugin, paths: string[]): Promise<string | null> {
+  for (const path of paths) {
+    if (await plugin.app.vault.adapter.exists(path)) return path;
+  }
+  return null;
 }
 
 function normalizeTrackedPaths(paths: unknown): string[] {
@@ -653,7 +671,7 @@ function normalizeTrackedPaths(paths: unknown): string[] {
   return output;
 }
 
-async function ensureAdapterParentFolders(plugin: GitSyncPortPlugin, path: string): Promise<void> {
+async function ensureAdapterParentFolders(plugin: GitSyncPortalPlugin, path: string): Promise<void> {
   const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   if (!parent) return;
   let current = "";

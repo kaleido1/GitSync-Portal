@@ -1,6 +1,6 @@
-# GitSync Port for Obsidian
+# GitSync Portal for Obsidian
 
-GitSync Port is a native Obsidian plugin that combines a multilingual vault dashboard with cross-platform two-way GitHub synchronization.
+GitSync Portal is a native Obsidian plugin that combines a multilingual vault dashboard with cross-platform two-way GitHub synchronization.
 
 ## Dashboard
 
@@ -15,7 +15,7 @@ GitSync Port is a native Obsidian plugin that combines a multilingual vault dash
 ## GitHub synchronization
 
 1. Create a fine-grained GitHub personal access token with **Contents: Read and write** access to the target repository.
-2. Open **Obsidian → Settings → GitSync Port**.
+2. Open **Obsidian → Settings → GitSync Portal**.
 3. Save the token, repository in `owner/repository` format, and branch name.
 4. Use **Test connection**, then run a synchronization from the dashboard or Command Palette.
 
@@ -23,19 +23,19 @@ The plugin uses Obsidian's HTTP and vault APIs, so the same synchronization engi
 
 ## Languages
 
-Choose **System default** to follow Obsidian, or select a language explicitly in GitSync Port settings. The available choices are aligned with commonly supported Obsidian locales and include English, Chinese, Japanese, Korean, Spanish, German, Italian, French, Arabic, Bengali, Dutch, Polish, Portuguese, Romanian, Russian, Swedish, Turkish, Ukrainian, and Vietnamese. Missing strings fall back safely to English.
+Choose **System default** to follow Obsidian, or select a language explicitly in GitSync Portal settings. The available choices are aligned with commonly supported Obsidian locales and include English, Chinese, Japanese, Korean, Spanish, German, Italian, French, Arabic, Bengali, Dutch, Polish, Portuguese, Romanian, Russian, Swedish, Turkish, Ukrainian, and Vietnamese. Missing strings fall back safely to English.
 
 ## Manual installation
 
 Place the release files in:
 
 ```text
-<Vault>/.obsidian/plugins/gitsync-port/
+<Vault>/.obsidian/plugins/gitsync-portal/
 ├── main.js
 ├── manifest.json
 └── styles.css
 ```
 
-Reload Obsidian and enable **GitSync Port** under **Settings → Community plugins**.
+Reload Obsidian and enable **GitSync Portal** under **Settings → Community plugins**.
 
 For platform-specific instructions and migration from the former plugin ID, see [INSTALL.md](INSTALL.md).

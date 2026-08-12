@@ -105,7 +105,7 @@ const listings = {
   },
   ".obsidian/plugins": {
     files: [],
-    folders: [".obsidian/plugins/example-plugin", ".obsidian/plugins/obsidian-git", ".obsidian/plugins/gitsync-port"],
+    folders: [".obsidian/plugins/example-plugin", ".obsidian/plugins/obsidian-git", ".obsidian/plugins/gitsync-portal"],
   },
   ".obsidian/plugins/example-plugin": {
     files: [
@@ -123,13 +123,13 @@ const listings = {
     ],
     folders: [],
   },
-  ".obsidian/plugins/gitsync-port": {
+  ".obsidian/plugins/gitsync-portal": {
     files: [
-      ".obsidian/plugins/gitsync-port/main.js",
-      ".obsidian/plugins/gitsync-port/data.json",
-      ".obsidian/plugins/gitsync-port/data.conflict-ios-20260811T132236Z.json",
-      ".obsidian/plugins/gitsync-port/local-sync-state.json",
-      ".obsidian/plugins/gitsync-port/sync-state.json",
+      ".obsidian/plugins/gitsync-portal/main.js",
+      ".obsidian/plugins/gitsync-portal/data.json",
+      ".obsidian/plugins/gitsync-portal/data.conflict-ios-20260811T132236Z.json",
+      ".obsidian/plugins/gitsync-portal/local-sync-state.json",
+      ".obsidian/plugins/gitsync-portal/sync-state.json",
     ],
     folders: [],
   },
@@ -144,18 +144,18 @@ const fakePlugin = {
     configDir: ".obsidian",
     adapter: {
       list: async (path) => listings[path] ?? { files: [], folders: [] },
-      read: async () => '["dataview"]',
+      read: async () => '["dataview","gitsync-port","obsidian-viewer"]',
       writeBinary: async (_path, data) => { protectedWrite = new TextDecoder().decode(data); },
     },
   } },
-  manifest: { id: "gitsync-port" },
+  manifest: { id: "gitsync-portal" },
   t: (key, values = {}) => `${key}${Object.keys(values).length ? `:${JSON.stringify(values)}` : ""}`,
   settings: { syncIgnorePatterns: [
     ".DS_Store",
     ".obsidian/workspace*.json",
     ".obsidian/page-preview.json",
-    ".obsidian/plugins/gitsync-port/local-sync-state.json",
-    ".obsidian/plugins/gitsync-port/*.conflict-*",
+    ".obsidian/plugins/gitsync-portal/local-sync-state.json",
+    ".obsidian/plugins/gitsync-portal/*.conflict-*",
     ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
     ".obsidian/plugins/*/manifest.conflict-*",
   ].join("\n") },
@@ -168,9 +168,9 @@ assert.deepEqual(await service.listAdapterFiles(), [
   ".obsidian/core-plugins.json",
   ".obsidian/plugins/example-plugin/main.js",
   ".obsidian/plugins/example-plugin/manifest.json",
-  ".obsidian/plugins/gitsync-port/data.json",
-  ".obsidian/plugins/gitsync-port/main.js",
-  ".obsidian/plugins/gitsync-port/sync-state.json",
+  ".obsidian/plugins/gitsync-portal/data.json",
+  ".obsidian/plugins/gitsync-portal/main.js",
+  ".obsidian/plugins/gitsync-portal/sync-state.json",
   ".obsidian/plugins/obsidian-git/data.json",
   ".obsidian/plugins/obsidian-git/main.js",
   "folder/.hidden.md",
@@ -179,9 +179,9 @@ assert.deepEqual(await service.listAdapterFiles(), [
 ]);
 const protectedList = await service.ensureSelfEnabled();
 assert.equal(protectedList.path, ".obsidian/community-plugins.json");
-assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "gitsync-port"]);
+assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "gitsync-portal"]);
 assert.equal(service.isSelfCoreFile(".obsidian/community-plugins.json"), true);
-assert.equal(service.isSelfCoreFile(".obsidian/plugins/gitsync-port/main.js"), true);
+assert.equal(service.isSelfCoreFile(".obsidian/plugins/gitsync-portal/main.js"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/dataview/main.js"), false);
 
 const retryPlugin = {
@@ -290,13 +290,13 @@ assert.equal(pluginSettingsResult.commitSha, "plugin-settings-upload");
 
 const viewerStateService = new GitHubSyncService(pluginSettingsPlugin, () => {});
 viewerStateService.getHead = async () => remoteSnapshot("remote", [
-  remoteFile(".obsidian/plugins/gitsync-port/sync-state.json", "remote"),
+  remoteFile(".obsidian/plugins/gitsync-portal/sync-state.json", "remote"),
 ]);
 viewerStateService.tryGetSnapshot = async () => remoteSnapshot("base", [
-  remoteFile(".obsidian/plugins/gitsync-port/sync-state.json", "base"),
+  remoteFile(".obsidian/plugins/gitsync-portal/sync-state.json", "base"),
 ]);
 viewerStateService.getLocalSnapshot = async () => map([
-  [".obsidian/plugins/gitsync-port/sync-state.json", localFile(".obsidian/plugins/gitsync-port/sync-state.json", "local")],
+  [".obsidian/plugins/gitsync-portal/sync-state.json", localFile(".obsidian/plugins/gitsync-portal/sync-state.json", "local")],
 ]);
 viewerStateService.getRemoteModifiedAt = async () => 0;
 viewerStateService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
@@ -309,7 +309,7 @@ viewerStateService.api = async (_token, method, endpoint) => {
 let viewerStatePushes = 0;
 viewerStateService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
   viewerStatePushes++;
-  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/gitsync-port/sync-state.json"));
+  assert.ok(entries.some((entry) => entry.path === ".obsidian/plugins/gitsync-portal/sync-state.json"));
   return "state-upload";
 };
 const viewerStateResult = await viewerStateService.syncAttempt("token", "main");

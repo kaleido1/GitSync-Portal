@@ -1,10 +1,10 @@
-# GitSync Port
+# GitSync Portal
 
-GitSync Port is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
+GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.0.0`
+Current version: `2.0.1`
 
-> GitSync Port is an independent community project. It is not affiliated with or endorsed by Obsidian.
+> GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
 ## Highlights
 
@@ -24,7 +24,7 @@ Current version: `2.0.0`
 
 ## Languages
 
-GitSync Port can follow the language selected in Obsidian or use an explicit language from the plugin settings.
+GitSync Portal can follow the language selected in Obsidian or use an explicit language from the plugin settings.
 
 The language selector closely follows commonly supported Obsidian locales:
 
@@ -38,11 +38,11 @@ The language selector closely follows commonly supported Obsidian locales:
 
 English and Simplified Chinese cover the full interface. Traditional Chinese, Japanese, Korean, Spanish, German, and Italian provide broad dashboard, settings, synchronization, and quiz coverage. Other listed locales translate navigation and the main synchronization controls. Every language falls back safely to English for text not yet localized.
 
-Change the language under **Obsidian → Settings → GitSync Port → Language**. The dashboard updates immediately. Command names are registered when the plugin loads, so reload Obsidian after changing language if you also want Command Palette entries to update.
+Change the language under **Obsidian → Settings → GitSync Portal → Language**. The dashboard updates immediately. Command names are registered when the plugin loads, so reload Obsidian after changing language if you also want Command Palette entries to update.
 
 ## Installation
 
-Download [gitsync-port-2.0.0.zip](https://github.com/kaleido1/GitSync-Port/releases/download/2.0.0/gitsync-port-2.0.0.zip) and extract it into your vault's plugin directory:
+Download [gitsync-portal-2.0.1.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.0.1/gitsync-portal-2.0.1.zip) and extract it into your vault's plugin directory:
 
 ```text
 <Vault>/.obsidian/plugins/
@@ -51,39 +51,39 @@ Download [gitsync-port-2.0.0.zip](https://github.com/kaleido1/GitSync-Port/relea
 The final layout must be:
 
 ```text
-<Vault>/.obsidian/plugins/gitsync-port/
+<Vault>/.obsidian/plugins/gitsync-portal/
 ├── main.js
 ├── manifest.json
 └── styles.css
 ```
 
-Reload Obsidian, open **Settings → Community plugins**, and enable **GitSync Port**. See [INSTALL.md](INSTALL.md) for platform-specific instructions.
+Reload Obsidian, open **Settings → Community plugins**, and enable **GitSync Portal**. See [INSTALL.md](INSTALL.md) for platform-specific instructions.
 
-## Upgrading from Obsidian Viewer 1.x
+## Upgrading from an earlier name
 
-Version 2.0 changes the plugin ID from `obsidian-viewer` to `gitsync-port`, so install it as a renamed plugin instead of overwriting the old directory.
+GitSync Portal uses the plugin ID `gitsync-portal`. Earlier releases used `gitsync-port` or `obsidian-viewer`, so install it as a renamed plugin instead of overwriting an old directory.
 
-1. Disable **Obsidian Viewer**.
-2. Install GitSync Port into `.obsidian/plugins/gitsync-port/`.
-3. Keep `.obsidian/plugins/obsidian-viewer/` temporarily for the first launch.
-4. Enable GitSync Port and reload Obsidian.
+1. Disable the earlier plugin.
+2. Install GitSync Portal into `.obsidian/plugins/gitsync-portal/`.
+3. Keep `.obsidian/plugins/gitsync-port/` or `.obsidian/plugins/obsidian-viewer/` temporarily for the first launch.
+4. Enable GitSync Portal and reload Obsidian.
 5. Confirm that the home note, reader settings, favorites, history, sync baseline, and GitHub connection are present.
 6. Remove the old plugin only after verification.
 
-On first load, GitSync Port reads legacy settings, shared favorites/history, local synchronization state, and the old SecretStorage token when new data does not exist. It writes future state under `gitsync-port` and ignores the legacy plugin directory during synchronization.
+On first load, GitSync Portal reads legacy settings, shared favorites/history, local synchronization state, and SecretStorage tokens when new data does not exist. It checks `gitsync-port` first, then `obsidian-viewer`, writes future state under `gitsync-portal`, and ignores both legacy plugin directories during synchronization.
 
 ## GitHub synchronization setup
 
 1. Create a fine-grained personal access token that can access only the target vault repository.
 2. Grant `Contents: Read and write` repository permission.
-3. Open **Obsidian → Settings → GitSync Port**.
+3. Open **Obsidian → Settings → GitSync Portal**.
 4. Enter the token, `owner/repository`, and branch.
 5. Select **Test connection**, then run the first two-way sync manually.
 6. Verify the result before enabling startup, save-triggered, or periodic sync.
 
-The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Port compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
+The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Portal compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
 
-If the remote branch changes during the final commit, GitSync Port reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
+If the remote branch changes during the final commit, GitSync Portal reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
 
 ## What is synchronized
 
@@ -94,16 +94,16 @@ The sync engine traverses the vault through Obsidian's cross-platform Vault Adap
 - Obsidian themes and CSS snippets
 - Community plugin files and settings
 - Core and community plugin enablement lists
-- GitSync Port program files
+- GitSync Portal program files
 - Shared favorites and reading history in `sync-state.json`
 
 The following stay device-local by default:
 
 - Workspace layout files
-- GitSync Port's local synchronization baseline
-- GitSync Port conflict copies
+- GitSync Portal's local synchronization baseline
+- GitSync Portal conflict copies
 - Obsidian Git runtime scripts
-- The legacy `.obsidian/plugins/obsidian-viewer/` migration directory
+- The legacy `.obsidian/plugins/gitsync-port/` and `.obsidian/plugins/obsidian-viewer/` migration directories
 
 The vault's `.git/` database and `.trash/` directory are always excluded. The GitHub token is stored in Obsidian SecretStorage and is not a vault file.
 
@@ -122,7 +122,7 @@ The left-sidebar dashboard provides:
 - GitHub synchronization status and progress
 - Current-note heading navigation
 
-GitSync Port uses Obsidian's native Markdown rendering, Wiki Links, embeds, Properties, Callouts, Mermaid, KaTeX, syntax highlighting, CSS snippets, and installed Dataview support.
+GitSync Portal uses Obsidian's native Markdown rendering, Wiki Links, embeds, Properties, Callouts, Mermaid, KaTeX, syntax highlighting, CSS snippets, and installed Dataview support.
 
 ## Development
 

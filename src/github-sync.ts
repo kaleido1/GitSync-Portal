@@ -5,11 +5,12 @@ import {
   normalizePath,
   requestUrl,
 } from "obsidian";
-import type GitSyncPortPlugin from "../main";
+import type GitSyncPortalPlugin from "../main";
 
 const API_ROOT = "https://api.github.com";
 const API_VERSION = "2026-03-10";
 const HARD_EXCLUDES = [".git/", ".trash/"];
+const LEGACY_PLUGIN_IDS = new Set(["gitsync-port", "obsidian-viewer"]);
 const MAX_SYNC_ATTEMPTS = 5;
 const MAX_REF_UPDATE_ATTEMPTS = 8;
 
@@ -117,7 +118,7 @@ export class GitHubSyncService {
   private running = false;
 
   constructor(
-    private readonly plugin: GitSyncPortPlugin,
+    private readonly plugin: GitSyncPortalPlugin,
     private readonly onStatus: (status: GitHubSyncStatus) => void,
   ) {}
 
@@ -501,8 +502,9 @@ export class GitHubSyncService {
     if (!Array.isArray(enabled) || !enabled.every((id) => typeof id === "string")) {
       throw new Error(this.plugin.t("enabledListInvalid", { path }));
     }
-    if (enabled.includes(this.plugin.manifest.id)) return null;
-    const updated = [...enabled, this.plugin.manifest.id];
+    const updated = enabled.filter((id) => !LEGACY_PLUGIN_IDS.has(id));
+    if (!updated.includes(this.plugin.manifest.id)) updated.push(this.plugin.manifest.id);
+    if (updated.length === enabled.length && updated.every((id, index) => id === enabled[index])) return null;
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}\n`);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     await this.plugin.app.vault.adapter.writeBinary(path, data);
@@ -545,7 +547,7 @@ export class GitHubSyncService {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "gitsync-port",
+        "User-Agent": "gitsync-portal",
       },
       contentType: "application/json",
       body: body === undefined ? undefined : JSON.stringify(body),

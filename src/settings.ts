@@ -1,9 +1,9 @@
 import { App, Notice, PluginSettingTab, Setting, TFile } from "obsidian";
-import type GitSyncPortPlugin from "../main";
+import type GitSyncPortalPlugin from "../main";
 import type { LanguageSetting, TranslationKey } from "./i18n";
 
-export class GitSyncPortSettingTab extends PluginSettingTab {
-  constructor(app: App, private readonly plugin: GitSyncPortPlugin) {
+export class GitSyncPortalSettingTab extends PluginSettingTab {
+  constructor(app: App, private readonly plugin: GitSyncPortalPlugin) {
     super(app, plugin);
   }
 

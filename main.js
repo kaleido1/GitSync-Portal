@@ -19,16 +19,17 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => GitSyncPortPlugin
+  default: () => GitSyncPortalPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
 // src/viewer-view.ts
 var import_obsidian = require("obsidian");
-var VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
+var VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
+var LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 var LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
-var GitSyncPortDashboardView = class extends import_obsidian.ItemView {
+var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -42,7 +43,7 @@ var GitSyncPortDashboardView = class extends import_obsidian.ItemView {
     this.folderForwardStack = [];
   }
   getViewType() {
-    return VIEW_TYPE_GITSYNC_PORT;
+    return VIEW_TYPE_GITSYNC_PORTAL;
   }
   getDisplayText() {
     return this.plugin.t("appName");
@@ -405,7 +406,7 @@ function compareVaultItems(a, b) {
 
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
-var GitSyncPortSettingTab = class extends import_obsidian2.PluginSettingTab {
+var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -864,6 +865,7 @@ var import_obsidian4 = require("obsidian");
 var API_ROOT = "https://api.github.com";
 var API_VERSION = "2026-03-10";
 var HARD_EXCLUDES = [".git/", ".trash/"];
+var LEGACY_PLUGIN_IDS = /* @__PURE__ */ new Set(["gitsync-port", "obsidian-viewer"]);
 var MAX_SYNC_ATTEMPTS = 5;
 var MAX_REF_UPDATE_ATTEMPTS = 8;
 var GitHubSyncService = class {
@@ -1226,8 +1228,9 @@ var GitHubSyncService = class {
     if (!Array.isArray(enabled) || !enabled.every((id) => typeof id === "string")) {
       throw new Error(this.plugin.t("enabledListInvalid", { path }));
     }
-    if (enabled.includes(this.plugin.manifest.id)) return null;
-    const updated = [...enabled, this.plugin.manifest.id];
+    const updated = enabled.filter((id) => !LEGACY_PLUGIN_IDS.has(id));
+    if (!updated.includes(this.plugin.manifest.id)) updated.push(this.plugin.manifest.id);
+    if (updated.length === enabled.length && updated.every((id, index) => id === enabled[index])) return null;
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}
 `);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -1266,7 +1269,7 @@ var GitHubSyncService = class {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": API_VERSION,
-        "User-Agent": "gitsync-port"
+        "User-Agent": "gitsync-portal"
       },
       contentType: "application/json",
       body: body === void 0 ? void 0 : JSON.stringify(body),
@@ -1397,10 +1400,10 @@ var LANGUAGE_OPTIONS = {
   vi: "Ti\u1EBFng Vi\u1EC7t"
 };
 var EN = {
-  appName: "GitSync Port",
+  appName: "GitSync Portal",
   settingsIntro: "The dashboard, search, favorites, history, and interactive quizzes are stored in this vault's plugin data.",
   language: "Language",
-  languageDescription: "Choose the language used by GitSync Port. System default follows the language selected in Obsidian.",
+  languageDescription: "Choose the language used by GitSync Portal. System default follows the language selected in Obsidian.",
   syncSection: "Cross-platform GitHub sync",
   syncDescription: "Two-way sync through the GitHub REST API without system Git, so it works on Android, iOS, Windows, macOS, and Linux. The first sync keeps files unique to either side. If the same path conflicts, the newer version wins and the older version is preserved as a conflict copy.",
   githubToken: "GitHub token",
@@ -1444,7 +1447,7 @@ var EN = {
   useCurrentNoteDescription: "Set the currently open Markdown note as home.",
   setAsHome: "Set as home",
   openDashboardOnStartup: "Open dashboard on startup",
-  openDashboardOnStartupDescription: "Open GitSync Port in the left sidebar after Obsidian finishes loading the layout.",
+  openDashboardOnStartupDescription: "Open GitSync Portal in the left sidebar after Obsidian finishes loading the layout.",
   historyLimit: "Reading history limit",
   historyLimitDescription: "Keep the 10\u2013500 most recent notes.",
   readingDisplay: "Reading display",
@@ -1480,7 +1483,7 @@ var EN = {
   recentReadingEmpty: "Notes you open will appear here.",
   githubSync: "Cross-platform GitHub sync",
   defaultBranch: "Default branch",
-  tokenMissing: "No GitHub token is saved. Open GitSync Port settings first.",
+  tokenMissing: "No GitHub token is saved. Open GitSync Portal settings first.",
   searchPlaceholder: "Search filenames and note contents\u2026",
   searching: "Searching\u2026",
   searchResults: "Search results ({count})",
@@ -1497,7 +1500,7 @@ var EN = {
   noHistory: "No reading history yet.",
   pageOutline: "On this page",
   noHeadings: "The current note has no headings.",
-  openDashboard: "Open GitSync Port",
+  openDashboard: "Open GitSync Portal",
   openReadingDashboard: "Open reading dashboard",
   syncGitHubNow: "Sync with GitHub now",
   openHomeNote: "Open home note",
@@ -1515,8 +1518,8 @@ var EN = {
   removedFavorite: "Removed favorite: {name}",
   addedFavorite: "Added favorite: {name}",
   homeSet: "Home note set to: {name}",
-  sharedStateReadFailed: "GitSync Port could not read the shared favorites/history file: {error}",
-  sharedStateWriteFailed: "GitSync Port could not save the shared favorites/history file: {error}",
+  sharedStateReadFailed: "GitSync Portal could not read the shared favorites/history file: {error}",
+  sharedStateWriteFailed: "GitSync Portal could not save the shared favorites/history file: {error}",
   statusConnecting: "Connecting to GitHub\u2026",
   statusRemoteRetry: "The remote just changed. Retrying sync (attempt {attempt})\u2026",
   syncRetryFailed: "Sync retries failed.",
@@ -1528,7 +1531,7 @@ var EN = {
   statusCommitRetry: "The remote just changed. Committing against the latest version (attempt {attempt})\u2026",
   remoteSamePathChanged: "The remote changed the same path during sync. Reconciling again.",
   remoteContinuouslyChanged: "The remote kept changing, so the sync commit failed.",
-  tokenRequired: "Save a GitHub token in GitSync Port settings first.",
+  tokenRequired: "Save a GitHub token in GitSync Portal settings first.",
   remoteTreeTooLarge: "The remote repository tree exceeds GitHub's recursive read limit. Sync stopped to avoid missing files.",
   statusScanning: "Scanning: {path}",
   unsupportedEncoding: "GitHub returned an unsupported encoding for {path}.",
@@ -1541,7 +1544,7 @@ var EN = {
   tokenInvalid: "The GitHub token is invalid or expired.",
   tokenForbidden: "The GitHub token lacks repository Contents read/write permission, or the request was rate-limited.",
   repositoryNotFound: "Repository, branch, or commit not found. Check the token scope and sync settings.",
-  remoteChanged: "The remote changed during sync, so GitSync Port restarted automatically{detail}",
+  remoteChanged: "The remote changed during sync, so GitSync Portal restarted automatically{detail}",
   apiFailed: "GitHub API request failed (HTTP {status}){detail}",
   repositoryFormat: "Repository must use the owner/repository format.",
   quizDefinition: "Quiz definition",
@@ -1571,7 +1574,7 @@ var EN = {
 var ZH = {
   settingsIntro: "\u9605\u8BFB\u5DE5\u4F5C\u53F0\u3001\u641C\u7D22\u3001\u6536\u85CF\u3001\u5386\u53F2\u548C\u4E92\u52A8\u6D4B\u9A8C\u5747\u4FDD\u5B58\u5728\u5F53\u524D Vault \u7684\u63D2\u4EF6\u6570\u636E\u4E2D\u3002",
   language: "\u8BED\u8A00",
-  languageDescription: "\u9009\u62E9 GitSync Port \u4F7F\u7528\u7684\u8BED\u8A00\uFF1B\u201C\u8DDF\u968F\u7CFB\u7EDF\u201D\u4F1A\u91C7\u7528 Obsidian \u5F53\u524D\u9009\u62E9\u7684\u8BED\u8A00\u3002",
+  languageDescription: "\u9009\u62E9 GitSync Portal \u4F7F\u7528\u7684\u8BED\u8A00\uFF1B\u201C\u8DDF\u968F\u7CFB\u7EDF\u201D\u4F1A\u91C7\u7528 Obsidian \u5F53\u524D\u9009\u62E9\u7684\u8BED\u8A00\u3002",
   syncSection: "GitHub \u8DE8\u5E73\u53F0\u540C\u6B65",
   syncDescription: "\u901A\u8FC7 GitHub REST API \u53CC\u5411\u540C\u6B65\uFF0C\u4E0D\u8C03\u7528\u7CFB\u7EDF Git\uFF0C\u56E0\u6B64\u53EF\u5728 Android\u3001iOS\u3001Windows\u3001macOS \u548C Linux \u4F7F\u7528\u3002\u9996\u6B21\u540C\u6B65\u4F1A\u4FDD\u7559\u4E24\u7AEF\u72EC\u6709\u6587\u4EF6\uFF1B\u540C\u4E00\u8DEF\u5F84\u51B2\u7A81\u65F6\uFF0C\u8F83\u65B0\u7684\u7248\u672C\u4F5C\u4E3A\u4E3B\u6587\u4EF6\uFF0C\u8F83\u65E7\u7248\u672C\u4FDD\u5B58\u4E3A conflict \u526F\u672C\u3002",
   githubTokenDescription: "\u5EFA\u8BAE\u4F7F\u7528\u53EA\u6388\u6743\u6B64\u4ED3\u5E93\u3001Contents: Read and write \u7684 fine-grained token\u3002Token \u7531 Obsidian SecretStorage \u4FDD\u5B58\uFF0C\u4E0D\u5199\u5165\u63D2\u4EF6 data.json\u3002",
@@ -1614,7 +1617,7 @@ var ZH = {
   useCurrentNoteDescription: "\u628A\u5F53\u524D\u6253\u5F00\u7684 Markdown \u7B14\u8BB0\u8BBE\u4E3A\u9996\u9875\u3002",
   setAsHome: "\u8BBE\u4E3A\u9996\u9875",
   openDashboardOnStartup: "\u542F\u52A8\u65F6\u6253\u5F00\u5DE5\u4F5C\u53F0",
-  openDashboardOnStartupDescription: "Obsidian \u5B8C\u6210\u5E03\u5C40\u52A0\u8F7D\u540E\u5728\u5DE6\u4FA7\u6253\u5F00 GitSync Port\u3002",
+  openDashboardOnStartupDescription: "Obsidian \u5B8C\u6210\u5E03\u5C40\u52A0\u8F7D\u540E\u5728\u5DE6\u4FA7\u6253\u5F00 GitSync Portal\u3002",
   historyLimit: "\u9605\u8BFB\u5386\u53F2\u4E0A\u9650",
   historyLimitDescription: "\u4FDD\u7559\u6700\u8FD1 10\u2013500 \u7BC7\u7B14\u8BB0\u3002",
   readingDisplay: "\u9605\u8BFB\u663E\u793A",
@@ -1650,7 +1653,7 @@ var ZH = {
   recentReadingEmpty: "\u6253\u5F00\u8FC7\u7684\u7B14\u8BB0\u4F1A\u51FA\u73B0\u5728\u8FD9\u91CC\u3002",
   githubSync: "GitHub \u8DE8\u5E73\u53F0\u540C\u6B65",
   defaultBranch: "\u9ED8\u8BA4\u5206\u652F",
-  tokenMissing: "\u5C1A\u672A\u4FDD\u5B58 GitHub token\uFF0C\u8BF7\u5148\u524D\u5F80 GitSync Port \u8BBE\u7F6E\u3002",
+  tokenMissing: "\u5C1A\u672A\u4FDD\u5B58 GitHub token\uFF0C\u8BF7\u5148\u524D\u5F80 GitSync Portal \u8BBE\u7F6E\u3002",
   searchPlaceholder: "\u641C\u7D22\u6587\u4EF6\u540D\u548C\u6B63\u6587\u2026",
   searching: "\u6B63\u5728\u641C\u7D22\u2026",
   searchResults: "\u641C\u7D22\u7ED3\u679C\uFF08{count}\uFF09",
@@ -1667,7 +1670,7 @@ var ZH = {
   noHistory: "\u6682\u65E0\u9605\u8BFB\u5386\u53F2\u3002",
   pageOutline: "\u672C\u9875\u76EE\u5F55",
   noHeadings: "\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709\u6807\u9898\u3002",
-  openDashboard: "\u6253\u5F00 GitSync Port",
+  openDashboard: "\u6253\u5F00 GitSync Portal",
   openReadingDashboard: "\u6253\u5F00\u9605\u8BFB\u5DE5\u4F5C\u53F0",
   syncGitHubNow: "\u7ACB\u5373\u4E0E GitHub \u53CC\u5411\u540C\u6B65",
   openHomeNote: "\u6253\u5F00\u9996\u9875\u7B14\u8BB0",
@@ -1685,8 +1688,8 @@ var ZH = {
   removedFavorite: "\u5DF2\u53D6\u6D88\u6536\u85CF\uFF1A{name}",
   addedFavorite: "\u5DF2\u6536\u85CF\uFF1A{name}",
   homeSet: "\u9996\u9875\u5DF2\u8BBE\u4E3A\uFF1A{name}",
-  sharedStateReadFailed: "GitSync Port \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF1A{error}",
-  sharedStateWriteFailed: "GitSync Port \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u4FDD\u5B58\u5931\u8D25\uFF1A{error}",
+  sharedStateReadFailed: "GitSync Portal \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF1A{error}",
+  sharedStateWriteFailed: "GitSync Portal \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u4FDD\u5B58\u5931\u8D25\uFF1A{error}",
   statusConnecting: "\u6B63\u5728\u8FDE\u63A5 GitHub\u2026",
   statusRemoteRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u91CD\u65B0\u540C\u6B65\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
   syncRetryFailed: "\u540C\u6B65\u91CD\u8BD5\u5931\u8D25\u3002",
@@ -1698,7 +1701,7 @@ var ZH = {
   statusCommitRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u57FA\u4E8E\u6700\u65B0\u7248\u672C\u63D0\u4EA4\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
   remoteSamePathChanged: "\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u4FEE\u6539\u4E86\u540C\u4E00\u8DEF\u5F84\uFF0C\u6B63\u5728\u91CD\u65B0\u5408\u5E76\u3002",
   remoteContinuouslyChanged: "\u8FDC\u7AEF\u6301\u7EED\u53D8\u5316\uFF0C\u540C\u6B65\u63D0\u4EA4\u5931\u8D25\u3002",
-  tokenRequired: "\u8BF7\u5148\u5728 GitSync Port \u8BBE\u7F6E\u4E2D\u4FDD\u5B58 GitHub token\u3002",
+  tokenRequired: "\u8BF7\u5148\u5728 GitSync Portal \u8BBE\u7F6E\u4E2D\u4FDD\u5B58 GitHub token\u3002",
   remoteTreeTooLarge: "\u8FDC\u7AEF\u4ED3\u5E93\u6587\u4EF6\u6811\u8D85\u8FC7 GitHub \u5355\u6B21\u9012\u5F52\u8BFB\u53D6\u4E0A\u9650\uFF0C\u5DF2\u505C\u6B62\u540C\u6B65\u4EE5\u907F\u514D\u9057\u6F0F\u6587\u4EF6\u3002",
   statusScanning: "\u6B63\u5728\u626B\u63CF\uFF1A{path}",
   unsupportedEncoding: "GitHub \u8FD4\u56DE\u4E86\u4E0D\u652F\u6301\u7684\u7F16\u7801\uFF1A{path}",
@@ -1741,7 +1744,7 @@ var ZH = {
 var ZH_TW = {
   ...ZH,
   language: "\u8A9E\u8A00",
-  languageDescription: "\u9078\u64C7 GitSync Port \u4F7F\u7528\u7684\u8A9E\u8A00\uFF1B\u300C\u8DDF\u96A8\u7CFB\u7D71\u300D\u6703\u63A1\u7528 Obsidian \u76EE\u524D\u9078\u64C7\u7684\u8A9E\u8A00\u3002",
+  languageDescription: "\u9078\u64C7 GitSync Portal \u4F7F\u7528\u7684\u8A9E\u8A00\uFF1B\u300C\u8DDF\u96A8\u7CFB\u7D71\u300D\u6703\u63A1\u7528 Obsidian \u76EE\u524D\u9078\u64C7\u7684\u8A9E\u8A00\u3002",
   settingsIntro: "\u95B1\u8B80\u5DE5\u4F5C\u53F0\u3001\u641C\u5C0B\u3001\u6536\u85CF\u3001\u6B77\u53F2\u548C\u4E92\u52D5\u6E2C\u9A57\u5747\u5132\u5B58\u5728\u76EE\u524D Vault \u7684\u5916\u639B\u8CC7\u6599\u4E2D\u3002",
   syncDescription: "\u900F\u904E GitHub REST API \u96D9\u5411\u540C\u6B65\uFF0C\u4E0D\u547C\u53EB\u7CFB\u7D71 Git\uFF0C\u56E0\u6B64\u53EF\u5728 Android\u3001iOS\u3001Windows\u3001macOS \u548C Linux \u4F7F\u7528\u3002\u9996\u6B21\u540C\u6B65\u6703\u4FDD\u7559\u5169\u7AEF\u7368\u6709\u6A94\u6848\uFF1B\u540C\u4E00\u8DEF\u5F91\u885D\u7A81\u6642\uFF0C\u8F03\u65B0\u7684\u7248\u672C\u4F5C\u70BA\u4E3B\u6A94\u6848\uFF0C\u8F03\u820A\u7248\u672C\u5132\u5B58\u70BA conflict \u526F\u672C\u3002",
   repository: "\u5132\u5B58\u5EAB",
@@ -1779,7 +1782,7 @@ var ZH_TW = {
 var JA = {
   settingsIntro: "\u30C0\u30C3\u30B7\u30E5\u30DC\u30FC\u30C9\u3001\u691C\u7D22\u3001\u304A\u6C17\u306B\u5165\u308A\u3001\u5C65\u6B74\u3001\u30A4\u30F3\u30BF\u30E9\u30AF\u30C6\u30A3\u30D6\u30AF\u30A4\u30BA\u306F\u3001\u3053\u306E Vault \u306E\u30D7\u30E9\u30B0\u30A4\u30F3\u30C7\u30FC\u30BF\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002",
   language: "\u8A00\u8A9E",
-  languageDescription: "GitSync Port \u3067\u4F7F\u7528\u3059\u308B\u8A00\u8A9E\u3092\u9078\u629E\u3057\u307E\u3059\u3002\u300C\u30B7\u30B9\u30C6\u30E0\u8A2D\u5B9A\u300D\u306F Obsidian \u3067\u9078\u629E\u4E2D\u306E\u8A00\u8A9E\u306B\u5F93\u3044\u307E\u3059\u3002",
+  languageDescription: "GitSync Portal \u3067\u4F7F\u7528\u3059\u308B\u8A00\u8A9E\u3092\u9078\u629E\u3057\u307E\u3059\u3002\u300C\u30B7\u30B9\u30C6\u30E0\u8A2D\u5B9A\u300D\u306F Obsidian \u3067\u9078\u629E\u4E2D\u306E\u8A00\u8A9E\u306B\u5F93\u3044\u307E\u3059\u3002",
   syncSection: "GitHub \u30AF\u30ED\u30B9\u30D7\u30E9\u30C3\u30C8\u30D5\u30A9\u30FC\u30E0\u540C\u671F",
   githubTokenDescription: "\u3053\u306E\u30EA\u30DD\u30B8\u30C8\u30EA\u3060\u3051\u306B Contents: Read and write \u3092\u8A31\u53EF\u3057\u305F fine-grained token \u3092\u63A8\u5968\u3057\u307E\u3059\u3002Token \u306F Obsidian SecretStorage \u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002",
   clearToken: "Token \u3092\u524A\u9664",
@@ -1873,7 +1876,7 @@ var JA = {
 var KO = {
   settingsIntro: "\uB300\uC2DC\uBCF4\uB4DC, \uAC80\uC0C9, \uC990\uACA8\uCC3E\uAE30, \uAE30\uB85D \uBC0F \uB300\uD654\uD615 \uD034\uC988\uB294 \uD604\uC7AC Vault\uC758 \uD50C\uB7EC\uADF8\uC778 \uB370\uC774\uD130\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4.",
   language: "\uC5B8\uC5B4",
-  languageDescription: "GitSync Port\uC5D0\uC11C \uC0AC\uC6A9\uD560 \uC5B8\uC5B4\uB97C \uC120\uD0DD\uD569\uB2C8\uB2E4. \uC2DC\uC2A4\uD15C \uAE30\uBCF8\uAC12\uC740 Obsidian\uC5D0\uC11C \uC120\uD0DD\uD55C \uC5B8\uC5B4\uB97C \uB530\uB985\uB2C8\uB2E4.",
+  languageDescription: "GitSync Portal\uC5D0\uC11C \uC0AC\uC6A9\uD560 \uC5B8\uC5B4\uB97C \uC120\uD0DD\uD569\uB2C8\uB2E4. \uC2DC\uC2A4\uD15C \uAE30\uBCF8\uAC12\uC740 Obsidian\uC5D0\uC11C \uC120\uD0DD\uD55C \uC5B8\uC5B4\uB97C \uB530\uB985\uB2C8\uB2E4.",
   syncSection: "GitHub \uD06C\uB85C\uC2A4 \uD50C\uB7AB\uD3FC \uB3D9\uAE30\uD654",
   githubTokenDescription: "\uC774 \uC800\uC7A5\uC18C\uC5D0\uB9CC Contents: Read and write \uAD8C\uD55C\uC744 \uBD80\uC5EC\uD55C fine-grained token\uC744 \uAD8C\uC7A5\uD569\uB2C8\uB2E4. Token\uC740 Obsidian SecretStorage\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4.",
   clearToken: "Token \uC9C0\uC6B0\uAE30",
@@ -1967,7 +1970,7 @@ var KO = {
 var ES = {
   settingsIntro: "El panel, la b\xFAsqueda, los favoritos, el historial y los cuestionarios interactivos se guardan en los datos del complemento de este Vault.",
   language: "Idioma",
-  languageDescription: "Elige el idioma de GitSync Port. La opci\xF3n del sistema sigue el idioma seleccionado en Obsidian.",
+  languageDescription: "Elige el idioma de GitSync Portal. La opci\xF3n del sistema sigue el idioma seleccionado en Obsidian.",
   syncSection: "Sincronizaci\xF3n multiplataforma con GitHub",
   syncDescription: "Sincronizaci\xF3n bidireccional mediante la API REST de GitHub, sin depender del Git del sistema. Funciona en Android, iOS, Windows, macOS y Linux. La primera sincronizaci\xF3n conserva los archivos exclusivos de ambos lados; si una ruta entra en conflicto, se conserva la versi\xF3n m\xE1s reciente y la anterior se guarda como copia de conflicto.",
   githubTokenDescription: "Usa un token detallado limitado a este repositorio con Contents: Read and write. Obsidian SecretStorage evita que el token se guarde en data.json.",
@@ -2010,7 +2013,7 @@ var ES = {
   useCurrentNoteDescription: "Establece la nota Markdown abierta como nota de inicio.",
   setAsHome: "Establecer como inicio",
   openDashboardOnStartup: "Abrir el panel al iniciar",
-  openDashboardOnStartupDescription: "Abre GitSync Port en la barra lateral izquierda despu\xE9s de cargar el dise\xF1o de Obsidian.",
+  openDashboardOnStartupDescription: "Abre GitSync Portal en la barra lateral izquierda despu\xE9s de cargar el dise\xF1o de Obsidian.",
   historyLimit: "L\xEDmite del historial de lectura",
   historyLimitDescription: "Conserva las 10\u2013500 notas m\xE1s recientes.",
   readingDisplay: "Vista de lectura",
@@ -2045,7 +2048,7 @@ var ES = {
   recentReadingEmpty: "Las notas abiertas aparecer\xE1n aqu\xED.",
   githubSync: "Sincronizaci\xF3n multiplataforma con GitHub",
   defaultBranch: "Rama predeterminada",
-  tokenMissing: "No hay ning\xFAn token de GitHub guardado. Abre primero los ajustes de GitSync Port.",
+  tokenMissing: "No hay ning\xFAn token de GitHub guardado. Abre primero los ajustes de GitSync Portal.",
   searchPlaceholder: "Buscar nombres y contenido de notas\u2026",
   searching: "Buscando\u2026",
   searchResults: "Resultados ({count})",
@@ -2072,7 +2075,7 @@ var ES = {
   statusPulling: "Aplicando cambio remoto: {path}",
   statusPushing: "Subiendo cambio local: {path}",
   statusComplete: "Sincronizaci\xF3n completada",
-  tokenRequired: "Guarda primero un token de GitHub en los ajustes de GitSync Port.",
+  tokenRequired: "Guarda primero un token de GitHub en los ajustes de GitSync Portal.",
   tokenInvalid: "El token de GitHub no es v\xE1lido o ha caducado.",
   repositoryNotFound: "No se encontr\xF3 el repositorio, la rama o el commit. Comprueba el token y los ajustes.",
   repositoryFormat: "El repositorio debe usar el formato propietario/repositorio.",
@@ -2093,7 +2096,7 @@ var ES = {
 var DE = {
   settingsIntro: "Dashboard, Suche, Favoriten, Verlauf und interaktive Quizze werden in den Plugin-Daten dieses Vaults gespeichert.",
   language: "Sprache",
-  languageDescription: "W\xE4hle die Sprache von GitSync Port. Die Systemeinstellung folgt der in Obsidian ausgew\xE4hlten Sprache.",
+  languageDescription: "W\xE4hle die Sprache von GitSync Portal. Die Systemeinstellung folgt der in Obsidian ausgew\xE4hlten Sprache.",
   syncSection: "Plattform\xFCbergreifende GitHub-Synchronisierung",
   syncDescription: "Bidirektionale Synchronisierung \xFCber die GitHub REST API ohne System-Git. Sie funktioniert unter Android, iOS, Windows, macOS und Linux. Beim ersten Abgleich bleiben Dateien beider Seiten erhalten; bei einem Pfadkonflikt gewinnt die neuere Version und die \xE4ltere wird als Konfliktkopie gespeichert.",
   githubTokenDescription: "Empfohlen wird ein auf dieses Repository begrenztes Fine-grained Token mit Contents: Read and write. Obsidian SecretStorage h\xE4lt das Token aus data.json heraus.",
@@ -2136,7 +2139,7 @@ var DE = {
   useCurrentNoteDescription: "Die aktuell ge\xF6ffnete Markdown-Notiz als Startnotiz festlegen.",
   setAsHome: "Als Start festlegen",
   openDashboardOnStartup: "Dashboard beim Start \xF6ffnen",
-  openDashboardOnStartupDescription: "GitSync Port nach dem Laden des Obsidian-Layouts in der linken Seitenleiste \xF6ffnen.",
+  openDashboardOnStartupDescription: "GitSync Portal nach dem Laden des Obsidian-Layouts in der linken Seitenleiste \xF6ffnen.",
   historyLimit: "Limit des Leseverlaufs",
   historyLimitDescription: "Die 10\u2013500 zuletzt gelesenen Notizen behalten.",
   readingDisplay: "Leseansicht",
@@ -2194,7 +2197,7 @@ var DE = {
   statusPulling: "Entfernte \xC4nderung wird angewendet: {path}",
   statusPushing: "Lokale \xC4nderung wird hochgeladen: {path}",
   statusComplete: "Synchronisierung abgeschlossen",
-  tokenRequired: "Speichere zuerst ein GitHub-Token in den Einstellungen von GitSync Port.",
+  tokenRequired: "Speichere zuerst ein GitHub-Token in den Einstellungen von GitSync Portal.",
   tokenInvalid: "Das GitHub-Token ist ung\xFCltig oder abgelaufen.",
   repositoryNotFound: "Repository, Branch oder Commit nicht gefunden. Token und Einstellungen pr\xFCfen.",
   repositoryFormat: "Das Repository muss das Format Eigent\xFCmer/Repository verwenden.",
@@ -2215,7 +2218,7 @@ var DE = {
 var IT = {
   settingsIntro: "Dashboard, ricerca, preferiti, cronologia e quiz interattivi vengono salvati nei dati del plugin di questo Vault.",
   language: "Lingua",
-  languageDescription: "Scegli la lingua di GitSync Port. L'impostazione di sistema segue la lingua selezionata in Obsidian.",
+  languageDescription: "Scegli la lingua di GitSync Portal. L'impostazione di sistema segue la lingua selezionata in Obsidian.",
   syncSection: "Sincronizzazione GitHub multipiattaforma",
   syncDescription: "Sincronizzazione bidirezionale tramite API REST di GitHub senza usare Git di sistema. Funziona su Android, iOS, Windows, macOS e Linux. La prima sincronizzazione conserva i file presenti su un solo lato; in caso di conflitto sullo stesso percorso, prevale la versione pi\xF9 recente e quella precedente viene salvata come copia di conflitto.",
   githubTokenDescription: "Usa un fine-grained token limitato a questo repository con Contents: Read and write. Obsidian SecretStorage impedisce che il token venga scritto in data.json.",
@@ -2258,7 +2261,7 @@ var IT = {
   useCurrentNoteDescription: "Imposta la nota Markdown aperta come nota iniziale.",
   setAsHome: "Imposta come iniziale",
   openDashboardOnStartup: "Apri dashboard all'avvio",
-  openDashboardOnStartupDescription: "Apre GitSync Port nella barra laterale sinistra dopo il caricamento del layout di Obsidian.",
+  openDashboardOnStartupDescription: "Apre GitSync Portal nella barra laterale sinistra dopo il caricamento del layout di Obsidian.",
   historyLimit: "Limite cronologia di lettura",
   historyLimitDescription: "Conserva le 10\u2013500 note pi\xF9 recenti.",
   readingDisplay: "Visualizzazione di lettura",
@@ -2316,7 +2319,7 @@ var IT = {
   statusPulling: "Applicazione modifica remota: {path}",
   statusPushing: "Caricamento modifica locale: {path}",
   statusComplete: "Sincronizzazione completata",
-  tokenRequired: "Salva prima un token GitHub nelle impostazioni di GitSync Port.",
+  tokenRequired: "Salva prima un token GitHub nelle impostazioni di GitSync Portal.",
   tokenInvalid: "Il token GitHub non \xE8 valido o \xE8 scaduto.",
   repositoryNotFound: "Repository, branch o commit non trovato. Controlla token e impostazioni.",
   repositoryFormat: "Il repository deve usare il formato proprietario/repository.",
@@ -2336,7 +2339,7 @@ var IT = {
 };
 var FR = {
   language: "Langue",
-  languageDescription: "Choisissez la langue de GitSync Port. Le r\xE9glage syst\xE8me suit la langue s\xE9lectionn\xE9e dans Obsidian.",
+  languageDescription: "Choisissez la langue de GitSync Portal. Le r\xE9glage syst\xE8me suit la langue s\xE9lectionn\xE9e dans Obsidian.",
   syncSection: "Synchronisation GitHub multiplateforme",
   repository: "D\xE9p\xF4t",
   branch: "Branche",
@@ -2377,7 +2380,7 @@ var FR = {
 };
 var AR = {
   language: "\u0627\u0644\u0644\u063A\u0629",
-  languageDescription: "\u0627\u062E\u062A\u0631 \u0644\u063A\u0629 GitSync Port. \u064A\u062A\u0628\u0639 \u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0645\u062D\u062F\u062F\u0629 \u0641\u064A Obsidian.",
+  languageDescription: "\u0627\u062E\u062A\u0631 \u0644\u063A\u0629 GitSync Portal. \u064A\u062A\u0628\u0639 \u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0644\u063A\u0629 \u0627\u0644\u0645\u062D\u062F\u062F\u0629 \u0641\u064A Obsidian.",
   syncSection: "\u0645\u0632\u0627\u0645\u0646\u0629 GitHub \u0639\u0628\u0631 \u0627\u0644\u0645\u0646\u0635\u0627\u062A",
   repository: "\u0627\u0644\u0645\u0633\u062A\u0648\u062F\u0639",
   branch: "\u0627\u0644\u0641\u0631\u0639",
@@ -2411,7 +2414,7 @@ var AR = {
 };
 var BN = {
   language: "\u09AD\u09BE\u09B7\u09BE",
-  languageDescription: "GitSync Port-\u098F\u09B0 \u09AD\u09BE\u09B7\u09BE \u09AC\u09C7\u099B\u09C7 \u09A8\u09BF\u09A8\u0964 \u09B8\u09BF\u09B8\u09CD\u099F\u09C7\u09AE \u09A1\u09BF\u09AB\u09B2\u09CD\u099F Obsidian-\u098F \u09A8\u09BF\u09B0\u09CD\u09AC\u09BE\u099A\u09BF\u09A4 \u09AD\u09BE\u09B7\u09BE \u0985\u09A8\u09C1\u09B8\u09B0\u09A3 \u0995\u09B0\u09C7\u0964",
+  languageDescription: "GitSync Portal-\u098F\u09B0 \u09AD\u09BE\u09B7\u09BE \u09AC\u09C7\u099B\u09C7 \u09A8\u09BF\u09A8\u0964 \u09B8\u09BF\u09B8\u09CD\u099F\u09C7\u09AE \u09A1\u09BF\u09AB\u09B2\u09CD\u099F Obsidian-\u098F \u09A8\u09BF\u09B0\u09CD\u09AC\u09BE\u099A\u09BF\u09A4 \u09AD\u09BE\u09B7\u09BE \u0985\u09A8\u09C1\u09B8\u09B0\u09A3 \u0995\u09B0\u09C7\u0964",
   syncSection: "\u0995\u09CD\u09B0\u09B8-\u09AA\u09CD\u09B2\u09CD\u09AF\u09BE\u099F\u09AB\u09B0\u09CD\u09AE GitHub \u09B8\u09BF\u0999\u09CD\u0995",
   repository: "\u09B0\u09BF\u09AA\u09CB\u099C\u09BF\u099F\u09B0\u09BF",
   branch: "\u09AC\u09CD\u09B0\u09BE\u099E\u09CD\u099A",
@@ -2445,7 +2448,7 @@ var BN = {
 };
 var NL = {
   language: "Taal",
-  languageDescription: "Kies de taal van GitSync Port. De systeeminstelling volgt de taal die in Obsidian is gekozen.",
+  languageDescription: "Kies de taal van GitSync Portal. De systeeminstelling volgt de taal die in Obsidian is gekozen.",
   syncSection: "Platformonafhankelijke GitHub-synchronisatie",
   repository: "Repository",
   branch: "Branch",
@@ -2479,7 +2482,7 @@ var NL = {
 };
 var PL = {
   language: "J\u0119zyk",
-  languageDescription: "Wybierz j\u0119zyk GitSync Port. Ustawienie systemowe u\u017Cywa j\u0119zyka wybranego w Obsidian.",
+  languageDescription: "Wybierz j\u0119zyk GitSync Portal. Ustawienie systemowe u\u017Cywa j\u0119zyka wybranego w Obsidian.",
   syncSection: "Wieloplatformowa synchronizacja GitHub",
   repository: "Repozytorium",
   branch: "Ga\u0142\u0105\u017A",
@@ -2513,7 +2516,7 @@ var PL = {
 };
 var PT = {
   language: "Idioma",
-  languageDescription: "Escolha o idioma do GitSync Port. A op\xE7\xE3o do sistema segue o idioma selecionado no Obsidian.",
+  languageDescription: "Escolha o idioma do GitSync Portal. A op\xE7\xE3o do sistema segue o idioma selecionado no Obsidian.",
   syncSection: "Sincroniza\xE7\xE3o GitHub multiplataforma",
   repository: "Reposit\xF3rio",
   branch: "Branch",
@@ -2556,7 +2559,7 @@ var PT_BR = {
 };
 var RO = {
   language: "Limb\u0103",
-  languageDescription: "Alege limba GitSync Port. Setarea sistemului urmeaz\u0103 limba selectat\u0103 \xEEn Obsidian.",
+  languageDescription: "Alege limba GitSync Portal. Setarea sistemului urmeaz\u0103 limba selectat\u0103 \xEEn Obsidian.",
   syncSection: "Sincronizare GitHub multiplatform\u0103",
   repository: "Repository",
   branch: "Ramur\u0103",
@@ -2590,7 +2593,7 @@ var RO = {
 };
 var RU = {
   language: "\u042F\u0437\u044B\u043A",
-  languageDescription: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u044F\u0437\u044B\u043A GitSync Port. \u0421\u0438\u0441\u0442\u0435\u043C\u043D\u044B\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442 \u044F\u0437\u044B\u043A, \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0432 Obsidian.",
+  languageDescription: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u044F\u0437\u044B\u043A GitSync Portal. \u0421\u0438\u0441\u0442\u0435\u043C\u043D\u044B\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442 \u044F\u0437\u044B\u043A, \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0432 Obsidian.",
   syncSection: "\u041A\u0440\u043E\u0441\u0441\u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0435\u043D\u043D\u0430\u044F \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F GitHub",
   repository: "\u0420\u0435\u043F\u043E\u0437\u0438\u0442\u043E\u0440\u0438\u0439",
   branch: "\u0412\u0435\u0442\u043A\u0430",
@@ -2624,7 +2627,7 @@ var RU = {
 };
 var SV = {
   language: "Spr\xE5k",
-  languageDescription: "V\xE4lj spr\xE5k f\xF6r GitSync Port. Systeminst\xE4llningen f\xF6ljer spr\xE5ket som valts i Obsidian.",
+  languageDescription: "V\xE4lj spr\xE5k f\xF6r GitSync Portal. Systeminst\xE4llningen f\xF6ljer spr\xE5ket som valts i Obsidian.",
   syncSection: "Plattformsoberoende GitHub-synkronisering",
   repository: "Katalog",
   branch: "Gren",
@@ -2658,7 +2661,7 @@ var SV = {
 };
 var TR = {
   language: "Dil",
-  languageDescription: "GitSync Port dilini se\xE7in. Sistem se\xE7ene\u011Fi Obsidian'da se\xE7ili dili izler.",
+  languageDescription: "GitSync Portal dilini se\xE7in. Sistem se\xE7ene\u011Fi Obsidian'da se\xE7ili dili izler.",
   syncSection: "Platformlar aras\u0131 GitHub e\u015Fitleme",
   repository: "Depo",
   branch: "Dal",
@@ -2692,7 +2695,7 @@ var TR = {
 };
 var UK = {
   language: "\u041C\u043E\u0432\u0430",
-  languageDescription: "\u0412\u0438\u0431\u0435\u0440\u0456\u0442\u044C \u043C\u043E\u0432\u0443 GitSync Port. \u0421\u0438\u0441\u0442\u0435\u043C\u043D\u0438\u0439 \u0432\u0430\u0440\u0456\u0430\u043D\u0442 \u0432\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0454 \u043C\u043E\u0432\u0443, \u0432\u0438\u0431\u0440\u0430\u043D\u0443 \u0432 Obsidian.",
+  languageDescription: "\u0412\u0438\u0431\u0435\u0440\u0456\u0442\u044C \u043C\u043E\u0432\u0443 GitSync Portal. \u0421\u0438\u0441\u0442\u0435\u043C\u043D\u0438\u0439 \u0432\u0430\u0440\u0456\u0430\u043D\u0442 \u0432\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0454 \u043C\u043E\u0432\u0443, \u0432\u0438\u0431\u0440\u0430\u043D\u0443 \u0432 Obsidian.",
   syncSection: "\u041A\u0440\u043E\u0441\u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u043D\u0430 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0456\u0437\u0430\u0446\u0456\u044F GitHub",
   repository: "\u0420\u0435\u043F\u043E\u0437\u0438\u0442\u043E\u0440\u0456\u0439",
   branch: "\u0413\u0456\u043B\u043A\u0430",
@@ -2726,7 +2729,7 @@ var UK = {
 };
 var VI = {
   language: "Ng\xF4n ng\u1EEF",
-  languageDescription: "Ch\u1ECDn ng\xF4n ng\u1EEF cho GitSync Port. T\xF9y ch\u1ECDn h\u1EC7 th\u1ED1ng d\xF9ng ng\xF4n ng\u1EEF \u0111\xE3 ch\u1ECDn trong Obsidian.",
+  languageDescription: "Ch\u1ECDn ng\xF4n ng\u1EEF cho GitSync Portal. T\xF9y ch\u1ECDn h\u1EC7 th\u1ED1ng d\xF9ng ng\xF4n ng\u1EEF \u0111\xE3 ch\u1ECDn trong Obsidian.",
   syncSection: "\u0110\u1ED3ng b\u1ED9 GitHub \u0111a n\u1EC1n t\u1EA3ng",
   repository: "Kho l\u01B0u tr\u1EEF",
   branch: "Nh\xE1nh",
@@ -2814,22 +2817,30 @@ function systemLocale() {
 }
 
 // main.ts
-var PLUGIN_ID = "gitsync-port";
-var LEGACY_PLUGIN_ID = "obsidian-viewer";
-var GITHUB_TOKEN_SECRET_ID = "gitsync-port-github-token";
-var LEGACY_GITHUB_TOKEN_SECRET_ID = "obsidian-viewer-github-token";
+var PLUGIN_ID = "gitsync-portal";
+var LEGACY_PLUGIN_IDS2 = ["gitsync-port", "obsidian-viewer"];
+var GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
+var LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"];
 var SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
 var LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
-var LEGACY_DATA_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/data.json`;
-var LEGACY_SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/sync-state.json`;
-var LEGACY_LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json`;
 var DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
   ".obsidian/workspace*.json",
   ".obsidian/page-preview.json",
   `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
   `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  `.obsidian/plugins/${LEGACY_PLUGIN_ID}/`,
+  ...LEGACY_PLUGIN_IDS2.map((id) => `.obsidian/plugins/${id}/`),
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/"
+].join("\n");
+var GITSYNC_PORT_SYNC_IGNORE_PATTERNS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/gitsync-port/local-sync-state.json",
+  ".obsidian/plugins/gitsync-port/*.conflict-*",
+  ".obsidian/plugins/obsidian-viewer/",
   ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
   ".obsidian/plugins/*/manifest.conflict-*",
   "node_modules/"
@@ -2893,7 +2904,7 @@ var DEFAULT_SETTINGS = {
   lastSyncAt: 0,
   lastSyncSummary: ""
 };
-var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
+var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { ...DEFAULT_SETTINGS };
@@ -2911,8 +2922,9 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
   async onload() {
     await this.loadSettings();
     this.migrateLegacyToken();
-    this.registerView(VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortDashboardView(leaf, this));
-    this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortDashboardView(leaf, this));
+    this.registerView(VIEW_TYPE_GITSYNC_PORTAL, (leaf) => new GitSyncPortalDashboardView(leaf, this));
+    this.registerView(LEGACY_VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortalDashboardView(leaf, this));
+    this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.addRibbonIcon("refresh-cw", this.t("openDashboard"), () => void this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",
@@ -2976,7 +2988,7 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
     }));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
     registerQuizProcessors(this);
-    this.addSettingTab(new GitSyncPortSettingTab(this.app, this));
+    this.addSettingTab(new GitSyncPortalSettingTab(this.app, this));
     this.applyReaderSettings();
     this.configurePeriodicSync();
     this.app.workspace.onLayoutReady(() => {
@@ -3016,7 +3028,7 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
       lastSyncSummary: localSyncState.lastSyncSummary
     };
     let migrated = legacyData !== null || (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
-    if ([PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
@@ -3035,8 +3047,11 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
     await this.refreshDashboard();
   }
   getGitHubToken() {
-    var _a, _b;
-    return ((_a = this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)) == null ? void 0 : _a.trim()) || ((_b = this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)) == null ? void 0 : _b.trim()) || "";
+    var _a;
+    return ((_a = this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)) == null ? void 0 : _a.trim()) || LEGACY_GITHUB_TOKEN_SECRET_IDS.map((id) => {
+      var _a2;
+      return (_a2 = this.app.secretStorage.getSecret(id)) == null ? void 0 : _a2.trim();
+    }).find(Boolean) || "";
   }
   setGitHubToken(token) {
     this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, token.trim());
@@ -3091,11 +3106,11 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
     document.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
   }
   async activateDashboard() {
-    var _a, _b;
-    let leaf = (_a = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT)[0]) != null ? _a : this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
+    var _a, _b, _c;
+    let leaf = (_b = (_a = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL)[0]) != null ? _a : this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT)[0]) != null ? _b : this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
     if (!leaf) {
-      leaf = (_b = this.app.workspace.getLeftLeaf(false)) != null ? _b : this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORT, active: true });
+      leaf = (_c = this.app.workspace.getLeftLeaf(false)) != null ? _c : this.app.workspace.getLeaf("tab");
+      await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
     }
     this.app.workspace.revealLeaf(leaf);
   }
@@ -3180,12 +3195,13 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
   }
   async refreshDashboard() {
     const leaves = [
-      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORT),
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)
     ];
     await Promise.all(leaves.map((leaf) => {
       const view = leaf.view;
-      return view instanceof GitSyncPortDashboardView ? view.render() : Promise.resolve();
+      return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
   }
   scheduleSyncOnSave() {
@@ -3229,8 +3245,7 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
   }
   async loadSyncedViewerState() {
     const path = syncedViewerStatePath(this.app.vault.configDir);
-    const legacyPath = legacySyncedViewerStatePath(this.app.vault.configDir);
-    const sourcePath = await this.app.vault.adapter.exists(path) ? path : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+    const sourcePath = await this.app.vault.adapter.exists(path) ? path : await firstExistingAdapterPath(this, legacyPluginPaths(this.app.vault.configDir, "sync-state.json"));
     if (!sourcePath) return null;
     try {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath));
@@ -3272,13 +3287,12 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
   }
   async loadLocalSyncState(loaded) {
     const path = localSyncStatePath(this.app.vault.configDir);
-    const legacyPath = legacyLocalSyncStatePath(this.app.vault.configDir);
     const fallback = {
       lastSyncedCommit: typeof (loaded == null ? void 0 : loaded.lastSyncedCommit) === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
       lastSyncAt: typeof (loaded == null ? void 0 : loaded.lastSyncAt) === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
       lastSyncSummary: typeof (loaded == null ? void 0 : loaded.lastSyncSummary) === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary
     };
-    const sourcePath = await this.app.vault.adapter.exists(path) ? path : await this.app.vault.adapter.exists(legacyPath) ? legacyPath : null;
+    const sourcePath = await this.app.vault.adapter.exists(path) ? path : await firstExistingAdapterPath(this, legacyPluginPaths(this.app.vault.configDir, "local-sync-state.json"));
     if (!sourcePath) return fallback;
     try {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath));
@@ -3312,19 +3326,24 @@ var GitSyncPortPlugin = class extends import_obsidian5.Plugin {
     await this.saveData(syncedSettings);
   }
   migrateLegacyToken() {
-    var _a, _b;
+    var _a;
     if ((_a = this.app.secretStorage.getSecret(GITHUB_TOKEN_SECRET_ID)) == null ? void 0 : _a.trim()) return;
-    const legacyToken = (_b = this.app.secretStorage.getSecret(LEGACY_GITHUB_TOKEN_SECRET_ID)) == null ? void 0 : _b.trim();
+    const legacyToken = LEGACY_GITHUB_TOKEN_SECRET_IDS.map((id) => {
+      var _a2;
+      return (_a2 = this.app.secretStorage.getSecret(id)) == null ? void 0 : _a2.trim();
+    }).find(Boolean);
     if (legacyToken) this.app.secretStorage.setSecret(GITHUB_TOKEN_SECRET_ID, legacyToken);
   }
   async loadLegacyPluginData() {
-    const path = (0, import_obsidian5.normalizePath)(this.app.vault.configDir ? `${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}/data.json` : LEGACY_DATA_PATH);
-    if (!await this.app.vault.adapter.exists(path)) return null;
-    try {
-      return JSON.parse(await this.app.vault.adapter.read(path));
-    } catch (e) {
-      return null;
+    for (const path of legacyPluginPaths(this.app.vault.configDir, "data.json")) {
+      if (!await this.app.vault.adapter.exists(path)) continue;
+      try {
+        return JSON.parse(await this.app.vault.adapter.read(path));
+      } catch (e) {
+        continue;
+      }
     }
+    return null;
   }
 };
 function syncedViewerStatePath(configDir) {
@@ -3333,11 +3352,14 @@ function syncedViewerStatePath(configDir) {
 function localSyncStatePath(configDir) {
   return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
 }
-function legacySyncedViewerStatePath(configDir) {
-  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/sync-state.json` : LEGACY_SYNCED_VIEWER_STATE_PATH);
+function legacyPluginPaths(configDir, filename) {
+  return LEGACY_PLUGIN_IDS2.map((id) => (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${id}/${filename}` : `.obsidian/plugins/${id}/${filename}`));
 }
-function legacyLocalSyncStatePath(configDir) {
-  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${LEGACY_PLUGIN_ID}/local-sync-state.json` : LEGACY_LOCAL_SYNC_STATE_PATH);
+async function firstExistingAdapterPath(plugin, paths) {
+  for (const path of paths) {
+    if (await plugin.app.vault.adapter.exists(path)) return path;
+  }
+  return null;
 }
 function normalizeTrackedPaths(paths) {
   if (!Array.isArray(paths)) return [];

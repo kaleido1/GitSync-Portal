@@ -1,5 +1,5 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild, TFile, parseYaml } from "obsidian";
-import type GitSyncPortPlugin from "../main";
+import type GitSyncPortalPlugin from "../main";
 import type { TranslationKey } from "./i18n";
 
 type Answer = string | string[] | Record<string, string> | undefined;
@@ -53,7 +53,7 @@ interface Score {
   total: number;
 }
 
-export function registerQuizProcessors(plugin: GitSyncPortPlugin): void {
+export function registerQuizProcessors(plugin: GitSyncPortalPlugin): void {
   plugin.registerMarkdownCodeBlockProcessor("quiz", (source, el) => {
     el.addClass("ov-quiz-definition");
     try {
@@ -75,7 +75,7 @@ class QuizRenderChild extends MarkdownRenderChild {
     containerEl: HTMLElement,
     private readonly source: string,
     private readonly context: MarkdownPostProcessorContext,
-    private readonly plugin: GitSyncPortPlugin,
+    private readonly plugin: GitSyncPortalPlugin,
   ) {
     super(containerEl);
   }

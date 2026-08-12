@@ -1,12 +1,12 @@
 {
-  "name": "gitsync-port",
-  "version": "2.0.0",
+  "name": "gitsync-portal",
+  "version": "2.0.1",
   "private": true,
   "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "kaleido1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kaleido1/GitSync-Port.git"
+    "url": "https://github.com/kaleido1/GitSync-Portal.git"
   },
   "main": "main.js",
   "scripts": {

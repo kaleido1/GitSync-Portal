@@ -26,7 +26,7 @@ assert.equal(resolveLanguage("auto", "xx-YY"), "en");
 assert.equal(translate("es", "language"), "Idioma");
 assert.equal(translate("de", "language"), "Sprache");
 assert.equal(translate("it", "language"), "Lingua");
-assert.equal(translate("fr", "appName"), "GitSync Port");
+assert.equal(translate("fr", "appName"), "GitSync Portal");
 assert.equal(translate("zh", "notesCount", { count: 12 }), "12 篇笔记");
 assert.equal(translate("en", "statusPushing", { path: "note.md" }), "Uploading local change: note.md");
 
