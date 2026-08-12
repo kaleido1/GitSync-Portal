@@ -4,6 +4,12 @@ Obsidian Viewer 是一个可在 Android、iOS、Windows、macOS 和 Linux 上使
 
 当前版本：`1.2.8`
 
+## 项目维护
+
+本仓库由 [kaleido1](https://github.com/kaleido1) 独立维护，产品路线聚焦于跨平台原生 Obsidian 插件，不再跟随上游 Android 应用的开发方向。
+
+项目最初基于 `MorganTian886/Obsidian_Viewer`，现有 Git 历史会继续保留早期作者与贡献记录；自分叉后的重构、跨平台插件和后续版本由本仓库独立演进。
+
 ## 下载 ZIP 安装（全平台）
 
 同一个安装包支持 Android、iOS、Windows、macOS 和 Linux：
@@ -103,4 +109,4 @@ scripts/test-sync.mjs   同步核心测试
 
 ## License
 
-目前尚未选择开源许可证。在添加许可证前，保留所有权利。
+目前尚未选择开源许可证。原始代码与后续贡献分别保留其作者的权利；在明确许可证发布前，不应将本仓库内容视为已获开源授权。
