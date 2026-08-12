@@ -1,7 +1,7 @@
 {
   "id": "gitsync-portal",
   "name": "GitSync Portal",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "minAppVersion": "1.11.4",
   "description": "Sync your vault through GitHub across mobile and desktop, with a multilingual dashboard, search, favorites, history, and quizzes.",
   "author": "Kai Liu",

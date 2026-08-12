@@ -1216,9 +1216,15 @@ var GitHubSyncService = class {
     return result;
   }
   async pushOnly(token, branch, remote, base, local) {
+    var _a;
     const plan = createPushOnlyPlan(local, remote.files, base);
     this.update("reconciling", this.plugin.t("statusReconcilingPush"));
     const upload = new Map(plan.upload);
+    for (const [path, localFile] of local) {
+      if (this.isCommunityPluginFile(path) && localFile.sha !== ((_a = remote.files.get(path)) == null ? void 0 : _a.sha)) {
+        upload.set(path, localFile);
+      }
+    }
     for (const conflict of plan.conflicts) {
       if (!conflict.local && this.isSelfCoreFile(conflict.path)) continue;
       upload.set(conflict.path, conflict.local);
@@ -1507,6 +1513,10 @@ var GitHubSyncService = class {
     if (path === enabledList) return true;
     const root = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}`);
     return ["main.js", "manifest.json", "styles.css"].some((name) => path === `${root}/${name}`);
+  }
+  isCommunityPluginFile(path) {
+    const root = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins`);
+    return path.startsWith(`${root}/`);
   }
   isIgnored(path) {
     const normalized = (0, import_obsidian4.normalizePath)(path);

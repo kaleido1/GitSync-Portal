@@ -366,6 +366,16 @@ export class GitHubSyncService {
     this.update("reconciling", this.plugin.t("statusReconcilingPush"));
     const upload = new Map(plan.upload);
 
+    // Push-only is the explicit deployment path for installed community
+    // plugins. Always publish local plugin files when they differ from remote,
+    // even if a stale or reverted baseline would otherwise classify the
+    // difference as remote-only. Ignored runtime files never enter `local`.
+    for (const [path, localFile] of local) {
+      if (this.isCommunityPluginFile(path) && localFile.sha !== remote.files.get(path)?.sha) {
+        upload.set(path, localFile);
+      }
+    }
+
     for (const conflict of plan.conflicts) {
       if (!conflict.local && this.isSelfCoreFile(conflict.path)) continue;
       upload.set(conflict.path, conflict.local);
@@ -672,6 +682,11 @@ export class GitHubSyncService {
     if (path === enabledList) return true;
     const root = normalizePath(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}`);
     return ["main.js", "manifest.json", "styles.css"].some((name) => path === `${root}/${name}`);
+  }
+
+  private isCommunityPluginFile(path: string): boolean {
+    const root = normalizePath(`${this.plugin.app.vault.configDir}/plugins`);
+    return path.startsWith(`${root}/`);
   }
 
   private isIgnored(path: string): boolean {

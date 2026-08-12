@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2] - 2026-08-13
+
+### Fixed
+
+- Made **Push only** publish all locally installed community plugin files whenever they differ from remote, even when a stale or reverted synchronization baseline would otherwise classify the difference as remote-only.
+- Added regression tests covering both GitSync Portal and other community-plugin deployment to the vault repository for later mobile pull-only updates.
+
 ## [2.1.1] - 2026-08-13
 
 ### Fixed
