@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.3] - 2026-08-13
+
+### Changed
+
+- Restored the GitSync Portal sidebar dashboard to a compact 2.0.1-style typography scale without changing note-reading font settings.
+
 ## [2.1.2] - 2026-08-13
 
 ### Fixed
