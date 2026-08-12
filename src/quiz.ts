@@ -45,6 +45,7 @@ export interface QuizProgress {
   answers: Record<string, Answer>;
   page: number;
   submitted: boolean;
+  submittedQuestions?: string[];
 }
 
 interface Score {
@@ -134,10 +135,14 @@ class QuizRenderChild extends MarkdownRenderChild {
   private renderQuiz(quiz: QuizDefinition): void {
     const key = `${this.context.sourcePath}:${quiz.id}`;
     const stored = this.plugin.getQuizProgress(key);
+    const legacySubmitted = Boolean(stored.submitted) && !Array.isArray(stored.submittedQuestions);
     const state: QuizProgress = {
       answers: { ...stored.answers },
       page: Number.isFinite(stored.page) ? stored.page : 0,
       submitted: Boolean(stored.submitted),
+      submittedQuestions: legacySubmitted
+        ? quiz.questions.map((question) => question.id)
+        : [...(stored.submittedQuestions ?? [])],
     };
     const questions = quiz.questions;
     state.page = Math.max(0, Math.min(state.page, questions.length - 1));
@@ -152,7 +157,10 @@ class QuizRenderChild extends MarkdownRenderChild {
       card.createEl("h3", { text: quiz.title || quiz.id });
       if (quiz.description) card.createDiv({ text: quiz.description, cls: "ov-quiz-description" });
 
-      if (state.submitted) this.renderTotal(card, quiz, state);
+      const submittedQuestions = new Set(state.submittedQuestions ?? []);
+      const completed = questions.every((question) => submittedQuestions.has(question.id));
+      state.submitted = completed;
+      if (completed) this.renderTotal(card, quiz, state);
 
       const oneAtATime = quiz.mode !== "all-at-once";
       const visibleQuestions = oneAtATime ? [questions[state.page]!] : questions;
@@ -167,9 +175,15 @@ class QuizRenderChild extends MarkdownRenderChild {
           save();
           draw();
         });
-        navigation.createSpan({ text: `${state.page + 1}/${questions.length}` });
+        navigation.createSpan({
+          text: this.plugin.t("quizProgress", {
+            current: state.page + 1,
+            total: questions.length,
+            submitted: submittedQuestions.size,
+          }),
+        });
         const next = navigation.createEl("button", { text: this.plugin.t("nextQuestion") });
-        next.disabled = state.page >= questions.length - 1;
+        next.disabled = state.page >= questions.length - 1 || !submittedQuestions.has(questions[state.page]!.id);
         next.addEventListener("click", () => {
           state.page = Math.min(questions.length - 1, state.page + 1);
           save();
@@ -178,16 +192,11 @@ class QuizRenderChild extends MarkdownRenderChild {
       }
 
       const actions = card.createDiv({ cls: "ov-quiz-actions" });
-      const submit = actions.createEl("button", { text: this.plugin.t(state.submitted ? "rescore" : "submit"), cls: "mod-cta" });
-      submit.addEventListener("click", () => {
-        state.submitted = true;
-        save();
-        draw();
-      });
       const retry = actions.createEl("button", { text: this.plugin.t("retryQuiz") });
       retry.addEventListener("click", () => {
         state.answers = {};
         state.submitted = false;
+        state.submittedQuestions = [];
         state.page = 0;
         this.plugin.setQuizProgress(key, state);
         draw();
@@ -201,7 +210,8 @@ class QuizRenderChild extends MarkdownRenderChild {
     const section = card.createEl("section", { cls: "ov-quiz-question" });
     section.createEl("strong", { text: question.prompt });
     const answer = state.answers[question.id];
-    const disabled = state.submitted;
+    const submittedQuestions = new Set(state.submittedQuestions ?? []);
+    const disabled = submittedQuestions.has(question.id);
 
     if (question.type === "multiple-choice" || question.type === "true-false") {
       const options = question.type === "true-false"
@@ -255,7 +265,9 @@ class QuizRenderChild extends MarkdownRenderChild {
         select.value = matches[prompt.id] ?? "";
         select.disabled = disabled;
         select.addEventListener("change", () => {
-          state.answers[question.id] = { ...matches, [prompt.id]: select.value };
+          const currentAnswer = state.answers[question.id];
+          const currentMatches = isStringRecord(currentAnswer) ? currentAnswer : {};
+          state.answers[question.id] = { ...currentMatches, [prompt.id]: select.value };
           save();
         });
       });
@@ -286,13 +298,38 @@ class QuizRenderChild extends MarkdownRenderChild {
       });
     }
 
-    if (state.submitted) {
+    if (!disabled) {
+      const actions = section.createDiv({ cls: "ov-quiz-question-actions" });
+      const submit = actions.createEl("button", { text: this.plugin.t("submitQuestion"), cls: "mod-cta" });
+      submit.addEventListener("click", () => {
+        submittedQuestions.add(question.id);
+        state.submittedQuestions = [...submittedQuestions];
+        state.submitted = false;
+        save();
+        draw();
+      });
+    } else {
       const result = scoreQuestion(question, state.answers[question.id]);
       const feedback = section.createDiv({
         cls: `ov-quiz-feedback ${result.ratio === 1 ? "is-correct" : "is-wrong"}`,
       });
       feedback.createSpan({ text: this.plugin.t(result.ratio === 1 ? "correct" : "notFullyCorrect") });
-      if (question.explanation) feedback.createSpan({ text: ` — ${question.explanation}` });
+      feedback.createDiv({
+        text: this.plugin.t("correctAnswer", { answer: formatCorrectAnswer(question) }),
+        cls: "ov-quiz-correct-answer",
+      });
+      if (question.explanation) feedback.createDiv({ text: question.explanation, cls: "ov-quiz-explanation" });
+
+      const actions = section.createDiv({ cls: "ov-quiz-question-actions" });
+      const retry = actions.createEl("button", { text: this.plugin.t("retryQuestion") });
+      retry.addEventListener("click", () => {
+        delete state.answers[question.id];
+        submittedQuestions.delete(question.id);
+        state.submittedQuestions = [...submittedQuestions];
+        state.submitted = false;
+        save();
+        draw();
+      });
     }
   }
 
@@ -306,6 +343,30 @@ class QuizRenderChild extends MarkdownRenderChild {
     if (quiz.passingScore !== undefined) suffix = ` · ${this.plugin.t(percent >= quiz.passingScore ? "passed" : "failed")}`;
     result.setText(this.plugin.t("score", { score: score.toFixed(1), total, percent, suffix }));
   }
+}
+
+function formatCorrectAnswer(question: QuizQuestion): string {
+  const optionText = (id: string): string => question.options?.find((option) => option.id === id)?.text ?? id;
+  if (question.type === "multiple-choice") return optionText(String(question.correctAnswer ?? ""));
+  if (question.type === "true-false") return String(question.correctAnswer) === "true" ? "True" : "False";
+  if (question.type === "multiple-select") return (question.correctAnswers ?? []).map(optionText).join("；");
+  if (question.type === "short-text") return (question.acceptedAnswers ?? []).join(" / ");
+  if (question.type === "numeric") {
+    const tolerance = Number(question.tolerance ?? 0);
+    return `${String(question.correctAnswer ?? "")}${tolerance > 0 ? ` ± ${tolerance}` : ""}`;
+  }
+  if (question.type === "matching") {
+    const prompts = new Map((question.prompts ?? []).map((prompt) => [prompt.id, prompt.text]));
+    const choices = new Map((question.choices ?? []).map((choice) => [choice.id, choice.text]));
+    return Object.entries(question.correctMatches ?? {})
+      .map(([prompt, choice]) => `${prompts.get(prompt) ?? prompt} → ${choices.get(choice) ?? choice}`)
+      .join("；");
+  }
+  if (question.type === "reorder") {
+    const items = new Map((question.items ?? []).map((item) => [item.id, item.text]));
+    return (question.correctOrder ?? []).map((id) => items.get(id) ?? id).join(" → ");
+  }
+  return "";
 }
 
 function scoreQuestion(question: QuizQuestion, answer: Answer): Score {

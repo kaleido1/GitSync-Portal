@@ -10,9 +10,12 @@ import type GitSyncPortalPlugin from "../main";
 const API_ROOT = "https://api.github.com";
 const API_VERSION = "2026-03-10";
 const HARD_EXCLUDES = [".git/", ".trash/"];
+const GENERATED_CONFLICT_COPY = /(?:^|\/)[^/]+\.conflict-[a-z0-9_-]+-\d{8}T\d{6}Z(?:-\d+)?(?:\.[^/]+)?$/i;
 const LEGACY_PLUGIN_IDS = new Set(["gitsync-port", "obsidian-viewer"]);
 const MAX_SYNC_ATTEMPTS = 5;
 const MAX_REF_UPDATE_ATTEMPTS = 8;
+const MASS_DELETION_MINIMUM = 20;
+const MASS_DELETION_RATIO = 0.25;
 
 interface GitHubRepository {
   default_branch: string;
@@ -87,7 +90,20 @@ interface ReconcilePlan {
   conflicts: Array<{ path: string; local: LocalFile; remote: RemoteFile | null }>;
 }
 
+interface PullOnlyPlan {
+  pull: Array<{ path: string; remote: RemoteFile | null }>;
+  conflicts: Array<{ path: string; local: LocalFile; remote: RemoteFile | null }>;
+}
+
+interface PushOnlyPlan {
+  upload: Map<string, LocalFile | null>;
+  conflicts: Array<{ path: string; local: LocalFile | null; remote: RemoteFile | null }>;
+}
+
+export type GitHubSyncMode = "two-way" | "pull-only" | "push-only";
+
 export interface GitHubSyncResult {
+  mode: GitHubSyncMode;
   branch: string;
   commitSha: string;
   pulled: number;
@@ -134,7 +150,7 @@ export class GitHubSyncService {
     return { repository: repository.full_name, branch, commitSha: head.commitSha };
   }
 
-  async sync(): Promise<GitHubSyncResult> {
+  async sync(mode: GitHubSyncMode = "two-way"): Promise<GitHubSyncResult> {
     if (this.running) throw new Error(this.plugin.t("syncAlreadyRunning"));
     this.running = true;
     try {
@@ -149,7 +165,7 @@ export class GitHubSyncService {
             await sleep(600 * attempt);
             this.update("connecting", this.plugin.t("statusRemoteRetry", { attempt }));
           }
-          return await this.syncAttempt(token, branch);
+          return await this.syncAttempt(token, branch, mode);
         } catch (error) {
           if (isRemoteChangedDuringSync(error) && attempt < MAX_SYNC_ATTEMPTS) {
             latestRemoteChange = error;
@@ -167,7 +183,7 @@ export class GitHubSyncService {
     }
   }
 
-  private async syncAttempt(token: string, branch: string): Promise<GitHubSyncResult> {
+  private async syncAttempt(token: string, branch: string, mode: GitHubSyncMode = "two-way"): Promise<GitHubSyncResult> {
     const remote = await this.getHead(token, branch);
     const base = this.plugin.settings.lastSyncedCommit
       ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit)
@@ -175,6 +191,13 @@ export class GitHubSyncService {
 
     this.update("scanning", this.plugin.t("statusHashing"));
     const local = await this.getLocalSnapshot();
+    if (base) {
+      if (mode !== "pull-only") this.assertNoMassDeletion("local", base.files, local);
+      if (mode !== "push-only") this.assertNoMassDeletion("remote", base.files, remote.files);
+    }
+    if (mode === "pull-only") return this.pullOnly(token, branch, remote, base?.files ?? null, local);
+    if (mode === "push-only") return this.pushOnly(token, branch, remote, base?.files ?? null, local);
+
     const plan = createReconcilePlan(local, remote.files, base?.files ?? null);
     this.update("reconciling", this.plugin.t("statusReconciling"));
 
@@ -185,23 +208,24 @@ export class GitHubSyncService {
     const protectedConflicts = new Set<string>();
     const localWins = new Set<string>();
 
-    for (const conflict of plan.conflicts) {
+    const conflictDecisions = await mapWithConcurrency(plan.conflicts, 6, async (conflict) => ({
+      conflict,
+      remoteModifiedAt: await this.getRemoteModifiedAt(token, branch, conflict.path),
+    }));
+    for (const { conflict, remoteModifiedAt } of conflictDecisions) {
       if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
         upload.set(conflict.path, conflict.local);
         protectedConflicts.add(conflict.path);
         continue;
       }
-      const remoteModifiedAt = await this.getRemoteModifiedAt(token, branch, conflict.path);
       if (conflict.local.mtime >= remoteModifiedAt) {
         upload.set(conflict.path, conflict.local);
         localWins.add(conflict.path);
         if (conflict.remote) {
-          const preserved = await this.createRemoteConflictCopy(token, conflict.remote);
-          upload.set(preserved.path, preserved);
+          await this.createRemoteConflictCopy(token, conflict.remote);
         }
       } else {
-        const preserved = await this.createConflictCopy(conflict.local);
-        upload.set(preserved.path, preserved);
+        await this.createConflictCopy(conflict.local);
       }
       conflicts++;
     }
@@ -264,6 +288,7 @@ export class GitHubSyncService {
     }
 
     const result: GitHubSyncResult = {
+      mode,
       branch,
       commitSha,
       pulled,
@@ -274,6 +299,136 @@ export class GitHubSyncService {
     };
     this.update("complete", this.plugin.t(result.changed ? "statusComplete" : "alreadyInSync"));
     return result;
+  }
+
+  private async pullOnly(
+    token: string,
+    branch: string,
+    remote: RemoteSnapshot,
+    base: Map<string, RemoteFile> | null,
+    local: Map<string, LocalFile>,
+  ): Promise<GitHubSyncResult> {
+    const plan = createPullOnlyPlan(local, remote.files, base);
+    this.update("reconciling", this.plugin.t("statusReconcilingPull"));
+    const protectedPaths = new Set<string>();
+
+    for (const conflict of plan.conflicts) {
+      if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
+        protectedPaths.add(conflict.path);
+        continue;
+      }
+      await this.createConflictCopy(conflict.local);
+    }
+
+    const operations = [
+      ...plan.conflicts
+        .filter(({ path }) => !protectedPaths.has(path))
+        .map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
+      ...plan.pull.filter(({ path, remote: remoteFile }) => remoteFile || !this.isSelfCoreFile(path)),
+    ];
+    let pulled = 0;
+    let deleted = 0;
+    for (let index = 0; index < operations.length; index++) {
+      const operation = operations[index]!;
+      this.update("pulling", this.plugin.t("statusPulling", { path: operation.path }), index + 1, operations.length);
+      if (operation.remote) {
+        await this.writeRemoteFile(token, operation.remote);
+        pulled++;
+      } else if (await this.deleteLocalPath(operation.path)) {
+        deleted++;
+      }
+    }
+    await this.ensureSelfEnabled();
+
+    const conflicts = plan.conflicts.length - protectedPaths.size;
+    const result: GitHubSyncResult = {
+      mode: "pull-only",
+      branch,
+      commitSha: remote.commitSha,
+      pulled,
+      pushed: 0,
+      deleted,
+      conflicts,
+      changed: pulled + deleted + conflicts > 0,
+    };
+    this.update("complete", this.plugin.t(result.changed ? "statusCompletePull" : "alreadyInSync"));
+    return result;
+  }
+
+  private async pushOnly(
+    token: string,
+    branch: string,
+    remote: RemoteSnapshot,
+    base: Map<string, RemoteFile> | null,
+    local: Map<string, LocalFile>,
+  ): Promise<GitHubSyncResult> {
+    const plan = createPushOnlyPlan(local, remote.files, base);
+    this.update("reconciling", this.plugin.t("statusReconcilingPush"));
+    const upload = new Map(plan.upload);
+
+    for (const conflict of plan.conflicts) {
+      if (!conflict.local && this.isSelfCoreFile(conflict.path)) continue;
+      upload.set(conflict.path, conflict.local);
+      if (conflict.remote) {
+        await this.createRemoteConflictCopy(token, conflict.remote);
+      }
+    }
+
+    const enabledList = await this.ensureSelfEnabled();
+    if (enabledList) upload.set(enabledList.path, enabledList);
+
+    const entries: TreeEntry[] = [];
+    let pushed = 0;
+    let deleted = 0;
+    let index = 0;
+    for (const [path, localFile] of upload) {
+      index++;
+      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
+      if (!localFile) {
+        entries.push({ path, mode: "100644", type: "blob", sha: null });
+        deleted++;
+        continue;
+      }
+      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+      const data = await this.readLocalBinary(localFile.path);
+      this.ensureFileSize(localFile.path, data.byteLength);
+      const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
+        content: arrayBufferToBase64(data),
+        encoding: "base64",
+      });
+      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      pushed++;
+    }
+
+    const commitSha = entries.length
+      ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries)
+      : remote.commitSha;
+    const conflicts = plan.conflicts.length;
+    const result: GitHubSyncResult = {
+      mode: "push-only",
+      branch,
+      commitSha,
+      pulled: 0,
+      pushed,
+      deleted,
+      conflicts,
+      changed: pushed + deleted + conflicts > 0,
+    };
+    this.update("complete", this.plugin.t(result.changed ? "statusCompletePush" : "alreadyInSync"));
+    return result;
+  }
+
+  private async deleteLocalPath(path: string): Promise<boolean> {
+    const existing = this.plugin.app.vault.getFileByPath(path);
+    if (existing) {
+      await this.plugin.app.vault.trash(existing, false);
+      return true;
+    }
+    if (await this.plugin.app.vault.adapter.exists(path)) {
+      await this.plugin.app.vault.adapter.trashLocal(path);
+      return true;
+    }
+    return false;
   }
 
   private async pushEntriesWithRemoteRetry(token: string, branch: string, plannedRemote: RemoteSnapshot, entries: TreeEntry[]): Promise<string> {
@@ -454,7 +609,7 @@ export class GitHubSyncService {
     }
   }
 
-  private async availableConflictPath(path: string): Promise<string> {
+  private async availableConflictPath(path: string, occupiedPaths?: Set<string>): Promise<string> {
     const slash = path.lastIndexOf("/");
     const directory = slash >= 0 ? path.slice(0, slash + 1) : "";
     const name = slash >= 0 ? path.slice(slash + 1) : path;
@@ -465,7 +620,7 @@ export class GitHubSyncService {
     const device = sanitizeSegment(this.plugin.settings.syncDeviceName || "device");
     let candidate = `${directory}${stem}.conflict-${device}-${stamp}${extension}`;
     let counter = 2;
-    while (await this.plugin.app.vault.adapter.exists(candidate)) {
+    while (occupiedPaths?.has(candidate) || await this.plugin.app.vault.adapter.exists(candidate)) {
       candidate = `${directory}${stem}.conflict-${device}-${stamp}-${counter}${extension}`;
       counter++;
     }
@@ -522,6 +677,9 @@ export class GitHubSyncService {
   private isIgnored(path: string): boolean {
     const normalized = normalizePath(path);
     if (HARD_EXCLUDES.some((prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix))) return true;
+    const localSyncState = normalizePath(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
+    if (normalized === localSyncState) return true;
+    if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
     return parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns).some((pattern) => matchesPattern(normalized, pattern));
   }
 
@@ -530,6 +688,20 @@ export class GitHubSyncService {
     if (bytes > maximum) {
       throw new Error(this.plugin.t("fileTooLarge", { limit: this.plugin.settings.syncMaxFileSizeMb, path }));
     }
+  }
+
+  private assertNoMassDeletion(
+    side: "local" | "remote",
+    base: Map<string, RemoteFile>,
+    current: Map<string, LocalFile | RemoteFile>,
+  ): void {
+    const detected = detectMassDeletion(base, current);
+    if (!detected) return;
+    throw new Error(this.plugin.t("massDeletionBlocked", {
+      side: this.plugin.t(side === "local" ? "localSide" : "remoteSide"),
+      missing: detected.missing,
+      total: detected.total,
+    }));
   }
 
   private commitMessage(): string {
@@ -613,6 +785,74 @@ export function createReconcilePlan(
   return { upload, pull, conflicts };
 }
 
+export function createPullOnlyPlan(
+  local: Map<string, LocalFile>,
+  remote: Map<string, RemoteFile>,
+  base: Map<string, RemoteFile> | null,
+): PullOnlyPlan {
+  const pull: PullOnlyPlan["pull"] = [];
+  const conflicts: PullOnlyPlan["conflicts"] = [];
+  const paths = new Set<string>([...remote.keys(), ...(base?.keys() ?? [])]);
+
+  for (const path of [...paths].sort()) {
+    const localFile = local.get(path);
+    const remoteFile = remote.get(path);
+    const baseFile = base?.get(path);
+    // Pull-only is also the bootstrap path for a new or rebuilt vault. A file
+    // that still exists remotely must be restored when it is missing locally,
+    // even when the remote copy has not changed since the saved baseline.
+    if (remoteFile && !localFile) {
+      pull.push({ path, remote: remoteFile });
+      continue;
+    }
+    const remoteChanged = base ? remoteFile?.sha !== baseFile?.sha : Boolean(remoteFile);
+    if (!remoteChanged || localFile?.sha === remoteFile?.sha) continue;
+    const localChanged = base ? localFile?.sha !== baseFile?.sha : Boolean(localFile);
+    if (localChanged && localFile) conflicts.push({ path, local: localFile, remote: remoteFile ?? null });
+    else pull.push({ path, remote: remoteFile ?? null });
+  }
+
+  return { pull, conflicts };
+}
+
+export function createPushOnlyPlan(
+  local: Map<string, LocalFile>,
+  remote: Map<string, RemoteFile>,
+  base: Map<string, RemoteFile> | null,
+): PushOnlyPlan {
+  const upload = new Map<string, LocalFile | null>();
+  const conflicts: PushOnlyPlan["conflicts"] = [];
+  const paths = new Set<string>([...local.keys(), ...(base?.keys() ?? [])]);
+
+  for (const path of [...paths].sort()) {
+    const localFile = local.get(path);
+    const remoteFile = remote.get(path);
+    const baseFile = base?.get(path);
+    const localChanged = base ? localFile?.sha !== baseFile?.sha : Boolean(localFile);
+    if (!localChanged || localFile?.sha === remoteFile?.sha) continue;
+    const remoteChanged = base ? remoteFile?.sha !== baseFile?.sha : Boolean(remoteFile);
+    if (remoteChanged) conflicts.push({ path, local: localFile ?? null, remote: remoteFile ?? null });
+    else upload.set(path, localFile ?? null);
+  }
+
+  return { upload, conflicts };
+}
+
+export function detectMassDeletion(
+  base: Map<string, RemoteFile>,
+  current: Map<string, LocalFile | RemoteFile>,
+): { missing: number; total: number } | null {
+  const total = base.size;
+  if (total < MASS_DELETION_MINIMUM) return null;
+  let missing = 0;
+  for (const path of base.keys()) {
+    if (!current.has(path)) missing++;
+  }
+  return missing >= MASS_DELETION_MINIMUM && missing / total >= MASS_DELETION_RATIO
+    ? { missing, total }
+    : null;
+}
+
 export async function gitBlobSha(data: ArrayBuffer): Promise<string> {
   const header = new TextEncoder().encode(`blob ${data.byteLength}\0`);
   const payload = new Uint8Array(header.byteLength + data.byteLength);
@@ -666,6 +906,19 @@ class RemoteChangedDuringSyncError extends Error {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const output = new Array<R>(items.length);
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      output[index] = await mapper(items[index]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return output;
 }
 
 function isRemoteChangedDuringSync(error: unknown): error is RemoteChangedDuringSyncError {

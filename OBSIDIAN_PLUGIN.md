@@ -8,7 +8,7 @@ GitSync Portal is a native Obsidian plugin that combines a multilingual vault da
 - Search titles, paths, and note content.
 - Keep favorites and reading history.
 - Adjust reading width, font size, and line height.
-- Generate interactive single-choice and multiple-choice quizzes from Markdown headings.
+- Render seven interactive quiz types with saved progress, per-question retry, and answer explanations.
 - See the currently selected file highlighted in the file tree.
 - Keep the file tree at the same scroll position when selecting a file, toggling a favorite, or refreshing the dashboard.
 
@@ -20,6 +20,8 @@ GitSync Portal is a native Obsidian plugin that combines a multilingual vault da
 4. Use **Test connection**, then run a synchronization from the dashboard or Command Palette.
 
 The plugin uses Obsidian's HTTP and vault APIs, so the same synchronization engine works on desktop, Android, and iOS without requiring a local Git executable.
+
+The dashboard provides two-way sync plus explicit pull-only and push-only actions. Synchronization includes mass-deletion safeguards, preserves displaced content as conflict copies, and excludes generated conflict copies from later passes.
 
 ## Languages
 

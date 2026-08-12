@@ -29,6 +29,7 @@ var import_obsidian = require("obsidian");
 var VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
 var LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 var LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
+var HISTORY_BATCH_SIZE = 40;
 var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -37,10 +38,12 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     this.searchQuery = "";
     this.searchSequence = 0;
     this.searchTimer = null;
+    this.syncUpdateFrame = null;
     this.isSearchComposing = false;
     this.currentFolderPath = "";
     this.folderBackStack = [];
     this.folderForwardStack = [];
+    this.historyVisibleCount = HISTORY_BATCH_SIZE;
   }
   getViewType() {
     return VIEW_TYPE_GITSYNC_PORTAL;
@@ -57,6 +60,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   async onClose() {
     if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+    if (this.syncUpdateFrame !== null) window.cancelAnimationFrame(this.syncUpdateFrame);
   }
   async render() {
     const root = this.contentEl;
@@ -65,22 +69,26 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     root.empty();
     root.addClass("ov-dashboard");
     const header = root.createDiv({ cls: "ov-dashboard-header" });
-    const titleBox = header.createDiv();
+    const brand = header.createDiv({ cls: "ov-dashboard-brand" });
+    (0, import_obsidian.setIcon)(brand.createSpan({ cls: "ov-brand-icon" }), "cloud-cog");
+    const titleBox = brand.createDiv();
     titleBox.createEl("h2", { text: this.plugin.t("appName") });
     titleBox.createEl("small", { text: this.plugin.t("notesCount", { count: this.app.vault.getMarkdownFiles().length }) });
     const refresh = header.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": this.plugin.t("refresh") } });
     (0, import_obsidian.setIcon)(refresh, "refresh-cw");
     refresh.addEventListener("click", () => void this.render());
     this.renderTabs(root);
-    this.renderActiveNote(root);
-    if (this.activeTab === "home") await this.renderHome(root);
+    if (this.activeTab === "home") {
+      this.renderActiveNote(root);
+      await this.renderHome(root);
+    }
     if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
     if (this.activeTab === "favorites") this.renderTrackedItems(root, this.plugin.t("tabFavorites"), this.plugin.settings.favorites, this.plugin.t("noFavorites"), true);
     if (this.activeTab === "history") this.renderHistory(root);
     root.scrollTop = scrollTop;
   }
   renderTabs(root) {
-    const tabs = root.createDiv({ cls: "ov-tabs" });
+    const tabs = root.createDiv({ cls: "ov-tabs", attr: { role: "tablist" } });
     const choices = [
       ["home", this.plugin.t("tabHome"), "home"],
       ["files", this.plugin.t("tabFiles"), "files"],
@@ -90,13 +98,14 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     choices.forEach(([tab, label, icon]) => {
       const button = tabs.createEl("button", {
         cls: `ov-tab${this.activeTab === tab ? " is-active" : ""}`,
-        attr: { "aria-pressed": String(this.activeTab === tab) }
+        attr: { role: "tab", "aria-selected": String(this.activeTab === tab) }
       });
       (0, import_obsidian.setIcon)(button.createSpan({ cls: "ov-tab-icon" }), icon);
       button.createSpan({ text: label });
       button.addEventListener("click", () => {
         this.activeTab = tab;
         this.searchQuery = "";
+        if (tab === "history") this.historyVisibleCount = HISTORY_BATCH_SIZE;
         void this.render();
       });
     });
@@ -105,11 +114,12 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     const file = this.app.workspace.getActiveFile();
     if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") return;
     const card = root.createDiv({ cls: "ov-active-card" });
-    card.createEl("small", { text: this.plugin.t("currentNote") });
-    card.createEl("strong", { text: file.basename });
-    card.createEl("span", { text: file.path, cls: "ov-muted ov-path" });
+    (0, import_obsidian.setIcon)(card.createSpan({ cls: "ov-active-note-icon" }), "file-text");
+    const labels = card.createDiv({ cls: "ov-active-note-labels" });
+    labels.createEl("small", { text: this.plugin.t("currentNote") });
+    labels.createEl("strong", { text: file.basename });
     const actions = card.createDiv({ cls: "ov-inline-actions" });
-    this.iconButton(actions, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
+    this.iconButton(actions, "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file), this.plugin.isFavorite(file.path));
     this.iconButton(actions, "house-plus", this.plugin.t("setAsHome"), () => void this.plugin.setHomeNote(file));
   }
   async renderHome(root) {
@@ -129,9 +139,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     this.renderSyncCard(root);
     const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getFileOrFolder(path)).filter((item) => item !== null).slice(0, 5);
     this.renderSection(root, this.plugin.t("tabFavorites"), favorites, this.plugin.t("noFavoriteNotes"), true);
+    this.renderOutline(root);
     const recent = this.plugin.settings.history.map((path) => this.plugin.getMarkdownFile(path)).filter((file) => file !== null).slice(0, 8);
     this.renderSection(root, this.plugin.t("recentReading"), recent, this.plugin.t("recentReadingEmpty"), false);
-    this.renderOutline(root);
   }
   renderSyncCard(root) {
     const status = this.plugin.syncStatus;
@@ -140,13 +150,32 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     const title = header.createDiv();
     title.createEl("strong", { text: this.plugin.t("githubSync") });
     title.createEl("small", { text: `${this.plugin.settings.syncRepository} \xB7 ${this.plugin.settings.syncBranch || this.plugin.t("defaultBranch")}` });
-    const sync = header.createEl("button", { text: this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow"), cls: "mod-cta" });
+    const sync = header.createEl("button", { cls: "mod-cta ov-sync-primary" });
+    (0, import_obsidian.setIcon)(sync.createSpan(), "refresh-cw");
+    sync.createSpan({ text: this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow") });
     sync.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
     sync.addEventListener("click", () => void this.plugin.syncNow());
     card.createDiv({
       text: this.plugin.getGitHubToken() ? status.message : this.plugin.t("tokenMissing"),
       cls: "ov-sync-message"
     });
+    const directionalActions = card.createDiv({ cls: "ov-sync-direction-actions" });
+    const pull = directionalActions.createEl("button", {
+      cls: "ov-tonal-button",
+      attr: { title: this.plugin.t("pullOnlyHint"), "aria-label": this.plugin.t("pullOnlyLong") }
+    });
+    (0, import_obsidian.setIcon)(pull.createSpan(), "cloud-download");
+    pull.createSpan({ text: this.plugin.t("pullOnly") });
+    pull.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    pull.addEventListener("click", () => void this.plugin.syncNow(true, "pull-only"));
+    const push = directionalActions.createEl("button", {
+      cls: "ov-tonal-button",
+      attr: { title: this.plugin.t("pushOnlyHint"), "aria-label": this.plugin.t("pushOnlyLong") }
+    });
+    (0, import_obsidian.setIcon)(push.createSpan(), "cloud-upload");
+    push.createSpan({ text: this.plugin.t("pushOnly") });
+    push.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    push.addEventListener("click", () => void this.plugin.syncNow(true, "push-only"));
     if (status.total && status.current !== void 0) {
       const progress = card.createEl("progress", { attr: { max: String(status.total), value: String(status.current) } });
       progress.value = status.current;
@@ -157,6 +186,34 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
         text: `${this.plugin.formatDateTime(this.plugin.settings.lastSyncAt)} \xB7 ${this.plugin.settings.lastSyncSummary || this.plugin.t("notSynced")}`,
         cls: "ov-muted"
       });
+    }
+  }
+  updateSyncStatus() {
+    if (this.syncUpdateFrame !== null) return;
+    this.syncUpdateFrame = window.requestAnimationFrame(() => {
+      this.syncUpdateFrame = null;
+      this.applySyncStatus();
+    });
+  }
+  applySyncStatus() {
+    const current = this.contentEl.querySelector(".ov-sync-card");
+    if (!current) return;
+    const status = this.plugin.syncStatus;
+    current.className = `ov-sync-card is-${status.stage}`;
+    const message = current.querySelector(".ov-sync-message");
+    if (message) message.textContent = this.plugin.getGitHubToken() ? status.message : this.plugin.t("tokenMissing");
+    current.querySelectorAll("button").forEach((button) => {
+      button.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    });
+    const primaryLabel = current.querySelector(".ov-sync-primary span:last-child");
+    if (primaryLabel) primaryLabel.textContent = this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow");
+    let progress = current.querySelector("progress");
+    if (status.total && status.current !== void 0) {
+      if (!progress) progress = current.createEl("progress");
+      progress.value = status.current;
+      progress.max = status.total;
+    } else {
+      progress == null ? void 0 : progress.remove();
     }
   }
   captureSearchFocus(root) {
@@ -265,9 +322,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
         (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), "folder");
         const labels = open.createSpan({ cls: "ov-file-labels" });
         labels.createEl("strong", { text: child.name || this.plugin.t("rootFolder") });
-        labels.createEl("small", { text: `${this.plugin.t("itemCount", { count: child.children.length })} \xB7 ${child.path || this.plugin.t("vaultRoot")}` });
+        labels.createEl("small", { text: this.plugin.t("itemCount", { count: child.children.length }) });
         open.addEventListener("click", () => this.openFolder(child.path, true));
-        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
+        this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child), this.plugin.isFavorite(child.path));
         return;
       }
       if (child instanceof import_obsidian.TFile) {
@@ -275,21 +332,34 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
         (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), child.extension === "md" ? "file-text" : "file");
         const labels = open.createSpan({ cls: "ov-file-labels" });
         labels.createEl("strong", { text: child.basename });
-        labels.createEl("small", { text: child.path });
+        labels.createEl("small", { text: this.fileMeta(child) });
         open.addEventListener("click", () => this.selectAndOpenFile(row, child));
         if (child.extension === "md") {
-          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
+          this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child), this.plugin.isFavorite(child.path));
         }
       }
     });
   }
   renderHistory(root) {
+    const total = this.plugin.settings.history.length;
     const heading = root.createDiv({ cls: "ov-section-heading" });
-    heading.createEl("h3", { text: this.plugin.t("readingHistory", { count: this.plugin.settings.history.length }) });
-    const clear = heading.createEl("button", { text: this.plugin.t("clear"), cls: "mod-warning" });
-    clear.disabled = this.plugin.settings.history.length === 0;
+    heading.createEl("h3", { text: this.plugin.t("readingHistory", { count: total }) });
+    const clear = heading.createEl("button", { text: this.plugin.t("clear"), cls: "ov-text-button is-danger" });
+    clear.disabled = total === 0;
     clear.addEventListener("click", () => void this.plugin.clearHistory());
-    this.renderTrackedItems(root, "", this.plugin.settings.history, this.plugin.t("noHistory"), false, false);
+    const visiblePaths = this.plugin.settings.history.slice(0, this.historyVisibleCount);
+    this.renderTrackedItems(root, "", visiblePaths, this.plugin.t("noHistory"), false, false);
+    const remaining = Math.max(0, total - visiblePaths.length);
+    if (remaining) {
+      const more = root.createEl("button", {
+        text: this.plugin.t("showMoreHistory", { count: Math.min(HISTORY_BATCH_SIZE, remaining) }),
+        cls: "ov-load-more ov-tonal-button"
+      });
+      more.addEventListener("click", () => {
+        this.historyVisibleCount += HISTORY_BATCH_SIZE;
+        void this.render();
+      });
+    }
   }
   renderTrackedItems(root, title, paths, emptyText, showFavorite, showHeading = true) {
     const items = paths.map((path) => showFavorite ? this.plugin.getFileOrFolder(path) : this.plugin.getMarkdownFile(path)).filter((item) => item !== null);
@@ -313,7 +383,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
       (0, import_obsidian.setIcon)(open.createSpan({ cls: "ov-file-icon" }), file instanceof import_obsidian.TFolder ? "folder" : "file-text");
       const labels = open.createSpan({ cls: "ov-file-labels" });
       labels.createEl("strong", { text: file instanceof import_obsidian.TFolder ? file.name || this.plugin.t("rootFolder") : file.basename });
-      labels.createEl("small", { text: file instanceof import_obsidian.TFolder ? `${this.plugin.t("itemCount", { count: file.children.length })} \xB7 ${file.path || this.plugin.t("vaultRoot")}` : file.path });
+      labels.createEl("small", {
+        text: file instanceof import_obsidian.TFolder ? `${this.plugin.t("itemCount", { count: file.children.length })} \xB7 ${this.parentLabel(file.path)}` : this.fileMeta(file)
+      });
       open.addEventListener("click", () => {
         if (file instanceof import_obsidian.TFolder) {
           this.activeTab = "files";
@@ -324,7 +396,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
         }
       });
       if (showFavorite) {
-        this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
+        this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file), this.plugin.isFavorite(file.path));
       }
     });
   }
@@ -345,11 +417,22 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
       button.addEventListener("click", () => void this.app.workspace.openLinkText(`${file.path}#${heading}`, file.path, false));
     });
   }
-  iconButton(root, icon, label, action) {
-    const button = root.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": label, title: label } });
+  iconButton(root, icon, label, action, active = false) {
+    const button = root.createEl("button", {
+      cls: `clickable-icon ov-icon-button${active ? " is-active" : ""}`,
+      attr: { "aria-label": label, title: label, ...active ? { "aria-pressed": "true" } : {} }
+    });
     (0, import_obsidian.setIcon)(button, icon);
     button.addEventListener("click", action);
     return button;
+  }
+  fileMeta(file) {
+    const parent = this.parentLabel(file.path);
+    return `${parent} \xB7 ${file.extension.toLocaleUpperCase()}`;
+  }
+  parentLabel(path) {
+    const slash = path.lastIndexOf("/");
+    return slash > 0 ? path.slice(0, slash) : this.plugin.t("vaultRoot");
   }
   markSelectedFile(row, file) {
     var _a;
@@ -629,12 +712,15 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     return definitions;
   }
   renderQuiz(quiz) {
+    var _a;
     const key = `${this.context.sourcePath}:${quiz.id}`;
     const stored = this.plugin.getQuizProgress(key);
+    const legacySubmitted = Boolean(stored.submitted) && !Array.isArray(stored.submittedQuestions);
     const state = {
       answers: { ...stored.answers },
       page: Number.isFinite(stored.page) ? stored.page : 0,
-      submitted: Boolean(stored.submitted)
+      submitted: Boolean(stored.submitted),
+      submittedQuestions: legacySubmitted ? quiz.questions.map((question) => question.id) : [...(_a = stored.submittedQuestions) != null ? _a : []]
     };
     const questions = quiz.questions;
     state.page = Math.max(0, Math.min(state.page, questions.length - 1));
@@ -642,11 +728,15 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       if (quiz.persistAnswers !== false) this.plugin.setQuizProgress(key, state);
     };
     const draw = () => {
+      var _a2;
       this.containerEl.empty();
       const card = this.containerEl.createDiv({ cls: "ov-quiz-card" });
       card.createEl("h3", { text: quiz.title || quiz.id });
       if (quiz.description) card.createDiv({ text: quiz.description, cls: "ov-quiz-description" });
-      if (state.submitted) this.renderTotal(card, quiz, state);
+      const submittedQuestions = new Set((_a2 = state.submittedQuestions) != null ? _a2 : []);
+      const completed = questions.every((question) => submittedQuestions.has(question.id));
+      state.submitted = completed;
+      if (completed) this.renderTotal(card, quiz, state);
       const oneAtATime = quiz.mode !== "all-at-once";
       const visibleQuestions = oneAtATime ? [questions[state.page]] : questions;
       visibleQuestions.forEach((question) => this.renderQuestion(card, question, state, save, draw));
@@ -659,9 +749,15 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
           save();
           draw();
         });
-        navigation.createSpan({ text: `${state.page + 1}/${questions.length}` });
+        navigation.createSpan({
+          text: this.plugin.t("quizProgress", {
+            current: state.page + 1,
+            total: questions.length,
+            submitted: submittedQuestions.size
+          })
+        });
         const next = navigation.createEl("button", { text: this.plugin.t("nextQuestion") });
-        next.disabled = state.page >= questions.length - 1;
+        next.disabled = state.page >= questions.length - 1 || !submittedQuestions.has(questions[state.page].id);
         next.addEventListener("click", () => {
           state.page = Math.min(questions.length - 1, state.page + 1);
           save();
@@ -669,16 +765,11 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
         });
       }
       const actions = card.createDiv({ cls: "ov-quiz-actions" });
-      const submit = actions.createEl("button", { text: this.plugin.t(state.submitted ? "rescore" : "submit"), cls: "mod-cta" });
-      submit.addEventListener("click", () => {
-        state.submitted = true;
-        save();
-        draw();
-      });
       const retry = actions.createEl("button", { text: this.plugin.t("retryQuiz") });
       retry.addEventListener("click", () => {
         state.answers = {};
         state.submitted = false;
+        state.submittedQuestions = [];
         state.page = 0;
         this.plugin.setQuizProgress(key, state);
         draw();
@@ -687,13 +778,14 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     draw();
   }
   renderQuestion(card, question, state, save, draw) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const section = card.createEl("section", { cls: "ov-quiz-question" });
     section.createEl("strong", { text: question.prompt });
     const answer = state.answers[question.id];
-    const disabled = state.submitted;
+    const submittedQuestions = new Set((_a = state.submittedQuestions) != null ? _a : []);
+    const disabled = submittedQuestions.has(question.id);
     if (question.type === "multiple-choice" || question.type === "true-false") {
-      const options = question.type === "true-false" ? [{ id: "true", text: "True" }, { id: "false", text: "False" }] : (_a = question.options) != null ? _a : [];
+      const options = question.type === "true-false" ? [{ id: "true", text: "True" }, { id: "false", text: "False" }] : (_b = question.options) != null ? _b : [];
       options.forEach((option) => {
         const label = section.createEl("label", { cls: "ov-quiz-option" });
         const input = label.createEl("input", { type: "radio", attr: { name: `${question.id}-${this.context.sourcePath}` } });
@@ -708,7 +800,7 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       });
     } else if (question.type === "multiple-select") {
       const selected = new Set(asStringArray(answer));
-      ((_b = question.options) != null ? _b : []).forEach((option) => {
+      ((_c = question.options) != null ? _c : []).forEach((option) => {
         const label = section.createEl("label", { cls: "ov-quiz-option" });
         const input = label.createEl("input", { type: "checkbox" });
         input.checked = selected.has(option.id);
@@ -734,7 +826,7 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       });
     } else if (question.type === "matching") {
       const matches = isStringRecord(answer) ? answer : {};
-      ((_c = question.prompts) != null ? _c : []).forEach((prompt) => {
+      ((_d = question.prompts) != null ? _d : []).forEach((prompt) => {
         var _a2, _b2;
         const label = section.createEl("label", { cls: "ov-quiz-match" });
         label.createSpan({ text: prompt.text });
@@ -744,12 +836,14 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
         select.value = (_b2 = matches[prompt.id]) != null ? _b2 : "";
         select.disabled = disabled;
         select.addEventListener("change", () => {
-          state.answers[question.id] = { ...matches, [prompt.id]: select.value };
+          const currentAnswer = state.answers[question.id];
+          const currentMatches = isStringRecord(currentAnswer) ? currentAnswer : {};
+          state.answers[question.id] = { ...currentMatches, [prompt.id]: select.value };
           save();
         });
       });
     } else if (question.type === "reorder") {
-      const items = (_d = question.items) != null ? _d : [];
+      const items = (_e = question.items) != null ? _e : [];
       const order = asStringArray(answer).length ? asStringArray(answer) : items.map((item) => item.id);
       const byId = new Map(items.map((item) => [item.id, item]));
       const orderBox = section.createDiv({ cls: "ov-quiz-order" });
@@ -775,13 +869,37 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
         });
       });
     }
-    if (state.submitted) {
+    if (!disabled) {
+      const actions = section.createDiv({ cls: "ov-quiz-question-actions" });
+      const submit = actions.createEl("button", { text: this.plugin.t("submitQuestion"), cls: "mod-cta" });
+      submit.addEventListener("click", () => {
+        submittedQuestions.add(question.id);
+        state.submittedQuestions = [...submittedQuestions];
+        state.submitted = false;
+        save();
+        draw();
+      });
+    } else {
       const result = scoreQuestion(question, state.answers[question.id]);
       const feedback = section.createDiv({
         cls: `ov-quiz-feedback ${result.ratio === 1 ? "is-correct" : "is-wrong"}`
       });
       feedback.createSpan({ text: this.plugin.t(result.ratio === 1 ? "correct" : "notFullyCorrect") });
-      if (question.explanation) feedback.createSpan({ text: ` \u2014 ${question.explanation}` });
+      feedback.createDiv({
+        text: this.plugin.t("correctAnswer", { answer: formatCorrectAnswer(question) }),
+        cls: "ov-quiz-correct-answer"
+      });
+      if (question.explanation) feedback.createDiv({ text: question.explanation, cls: "ov-quiz-explanation" });
+      const actions = section.createDiv({ cls: "ov-quiz-question-actions" });
+      const retry = actions.createEl("button", { text: this.plugin.t("retryQuestion") });
+      retry.addEventListener("click", () => {
+        delete state.answers[question.id];
+        submittedQuestions.delete(question.id);
+        state.submittedQuestions = [...submittedQuestions];
+        state.submitted = false;
+        save();
+        draw();
+      });
     }
   }
   renderTotal(card, quiz, state) {
@@ -795,6 +913,37 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     result.setText(this.plugin.t("score", { score: score.toFixed(1), total, percent, suffix }));
   }
 };
+function formatCorrectAnswer(question) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  const optionText = (id) => {
+    var _a2, _b2, _c2;
+    return (_c2 = (_b2 = (_a2 = question.options) == null ? void 0 : _a2.find((option) => option.id === id)) == null ? void 0 : _b2.text) != null ? _c2 : id;
+  };
+  if (question.type === "multiple-choice") return optionText(String((_a = question.correctAnswer) != null ? _a : ""));
+  if (question.type === "true-false") return String(question.correctAnswer) === "true" ? "True" : "False";
+  if (question.type === "multiple-select") return ((_b = question.correctAnswers) != null ? _b : []).map(optionText).join("\uFF1B");
+  if (question.type === "short-text") return ((_c = question.acceptedAnswers) != null ? _c : []).join(" / ");
+  if (question.type === "numeric") {
+    const tolerance = Number((_d = question.tolerance) != null ? _d : 0);
+    return `${String((_e = question.correctAnswer) != null ? _e : "")}${tolerance > 0 ? ` \xB1 ${tolerance}` : ""}`;
+  }
+  if (question.type === "matching") {
+    const prompts = new Map(((_f = question.prompts) != null ? _f : []).map((prompt) => [prompt.id, prompt.text]));
+    const choices = new Map(((_g = question.choices) != null ? _g : []).map((choice) => [choice.id, choice.text]));
+    return Object.entries((_h = question.correctMatches) != null ? _h : {}).map(([prompt, choice]) => {
+      var _a2, _b2;
+      return `${(_a2 = prompts.get(prompt)) != null ? _a2 : prompt} \u2192 ${(_b2 = choices.get(choice)) != null ? _b2 : choice}`;
+    }).join("\uFF1B");
+  }
+  if (question.type === "reorder") {
+    const items = new Map(((_i = question.items) != null ? _i : []).map((item) => [item.id, item.text]));
+    return ((_j = question.correctOrder) != null ? _j : []).map((id) => {
+      var _a2;
+      return (_a2 = items.get(id)) != null ? _a2 : id;
+    }).join(" \u2192 ");
+  }
+  return "";
+}
 function scoreQuestion(question, answer) {
   var _a, _b, _c, _d, _e, _f;
   let ratio = 0;
@@ -865,9 +1014,12 @@ var import_obsidian4 = require("obsidian");
 var API_ROOT = "https://api.github.com";
 var API_VERSION = "2026-03-10";
 var HARD_EXCLUDES = [".git/", ".trash/"];
+var GENERATED_CONFLICT_COPY = /(?:^|\/)[^/]+\.conflict-[a-z0-9_-]+-\d{8}T\d{6}Z(?:-\d+)?(?:\.[^/]+)?$/i;
 var LEGACY_PLUGIN_IDS = /* @__PURE__ */ new Set(["gitsync-port", "obsidian-viewer"]);
 var MAX_SYNC_ATTEMPTS = 5;
 var MAX_REF_UPDATE_ATTEMPTS = 8;
+var MASS_DELETION_MINIMUM = 20;
+var MASS_DELETION_RATIO = 0.25;
 var GitHubSyncService = class {
   constructor(plugin, onStatus) {
     this.plugin = plugin;
@@ -884,7 +1036,7 @@ var GitHubSyncService = class {
     const head = await this.getHead(token, branch);
     return { repository: repository.full_name, branch, commitSha: head.commitSha };
   }
-  async sync() {
+  async sync(mode = "two-way") {
     if (this.running) throw new Error(this.plugin.t("syncAlreadyRunning"));
     this.running = true;
     try {
@@ -899,7 +1051,7 @@ var GitHubSyncService = class {
             await sleep(600 * attempt);
             this.update("connecting", this.plugin.t("statusRemoteRetry", { attempt }));
           }
-          return await this.syncAttempt(token, branch);
+          return await this.syncAttempt(token, branch, mode);
         } catch (error) {
           if (isRemoteChangedDuringSync(error) && attempt < MAX_SYNC_ATTEMPTS) {
             latestRemoteChange = error;
@@ -916,13 +1068,19 @@ var GitHubSyncService = class {
       this.running = false;
     }
   }
-  async syncAttempt(token, branch) {
-    var _a;
+  async syncAttempt(token, branch, mode = "two-way") {
+    var _a, _b, _c;
     const remote = await this.getHead(token, branch);
     const base = this.plugin.settings.lastSyncedCommit ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit) : null;
     this.update("scanning", this.plugin.t("statusHashing"));
     const local = await this.getLocalSnapshot();
-    const plan = createReconcilePlan(local, remote.files, (_a = base == null ? void 0 : base.files) != null ? _a : null);
+    if (base) {
+      if (mode !== "pull-only") this.assertNoMassDeletion("local", base.files, local);
+      if (mode !== "push-only") this.assertNoMassDeletion("remote", base.files, remote.files);
+    }
+    if (mode === "pull-only") return this.pullOnly(token, branch, remote, (_a = base == null ? void 0 : base.files) != null ? _a : null, local);
+    if (mode === "push-only") return this.pushOnly(token, branch, remote, (_b = base == null ? void 0 : base.files) != null ? _b : null, local);
+    const plan = createReconcilePlan(local, remote.files, (_c = base == null ? void 0 : base.files) != null ? _c : null);
     this.update("reconciling", this.plugin.t("statusReconciling"));
     let pulled = 0;
     let deleted = 0;
@@ -930,23 +1088,24 @@ var GitHubSyncService = class {
     const upload = new Map(plan.upload);
     const protectedConflicts = /* @__PURE__ */ new Set();
     const localWins = /* @__PURE__ */ new Set();
-    for (const conflict of plan.conflicts) {
+    const conflictDecisions = await mapWithConcurrency(plan.conflicts, 6, async (conflict) => ({
+      conflict,
+      remoteModifiedAt: await this.getRemoteModifiedAt(token, branch, conflict.path)
+    }));
+    for (const { conflict, remoteModifiedAt } of conflictDecisions) {
       if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
         upload.set(conflict.path, conflict.local);
         protectedConflicts.add(conflict.path);
         continue;
       }
-      const remoteModifiedAt = await this.getRemoteModifiedAt(token, branch, conflict.path);
       if (conflict.local.mtime >= remoteModifiedAt) {
         upload.set(conflict.path, conflict.local);
         localWins.add(conflict.path);
         if (conflict.remote) {
-          const preserved = await this.createRemoteConflictCopy(token, conflict.remote);
-          upload.set(preserved.path, preserved);
+          await this.createRemoteConflictCopy(token, conflict.remote);
         }
       } else {
-        const preserved = await this.createConflictCopy(conflict.local);
-        upload.set(preserved.path, preserved);
+        await this.createConflictCopy(conflict.local);
       }
       conflicts++;
     }
@@ -1002,6 +1161,7 @@ var GitHubSyncService = class {
       if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
     }
     const result = {
+      mode,
       branch,
       commitSha,
       pulled,
@@ -1012,6 +1172,110 @@ var GitHubSyncService = class {
     };
     this.update("complete", this.plugin.t(result.changed ? "statusComplete" : "alreadyInSync"));
     return result;
+  }
+  async pullOnly(token, branch, remote, base, local) {
+    const plan = createPullOnlyPlan(local, remote.files, base);
+    this.update("reconciling", this.plugin.t("statusReconcilingPull"));
+    const protectedPaths = /* @__PURE__ */ new Set();
+    for (const conflict of plan.conflicts) {
+      if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
+        protectedPaths.add(conflict.path);
+        continue;
+      }
+      await this.createConflictCopy(conflict.local);
+    }
+    const operations = [
+      ...plan.conflicts.filter(({ path }) => !protectedPaths.has(path)).map(({ path, remote: remoteFile }) => ({ path, remote: remoteFile })),
+      ...plan.pull.filter(({ path, remote: remoteFile }) => remoteFile || !this.isSelfCoreFile(path))
+    ];
+    let pulled = 0;
+    let deleted = 0;
+    for (let index = 0; index < operations.length; index++) {
+      const operation = operations[index];
+      this.update("pulling", this.plugin.t("statusPulling", { path: operation.path }), index + 1, operations.length);
+      if (operation.remote) {
+        await this.writeRemoteFile(token, operation.remote);
+        pulled++;
+      } else if (await this.deleteLocalPath(operation.path)) {
+        deleted++;
+      }
+    }
+    await this.ensureSelfEnabled();
+    const conflicts = plan.conflicts.length - protectedPaths.size;
+    const result = {
+      mode: "pull-only",
+      branch,
+      commitSha: remote.commitSha,
+      pulled,
+      pushed: 0,
+      deleted,
+      conflicts,
+      changed: pulled + deleted + conflicts > 0
+    };
+    this.update("complete", this.plugin.t(result.changed ? "statusCompletePull" : "alreadyInSync"));
+    return result;
+  }
+  async pushOnly(token, branch, remote, base, local) {
+    const plan = createPushOnlyPlan(local, remote.files, base);
+    this.update("reconciling", this.plugin.t("statusReconcilingPush"));
+    const upload = new Map(plan.upload);
+    for (const conflict of plan.conflicts) {
+      if (!conflict.local && this.isSelfCoreFile(conflict.path)) continue;
+      upload.set(conflict.path, conflict.local);
+      if (conflict.remote) {
+        await this.createRemoteConflictCopy(token, conflict.remote);
+      }
+    }
+    const enabledList = await this.ensureSelfEnabled();
+    if (enabledList) upload.set(enabledList.path, enabledList);
+    const entries = [];
+    let pushed = 0;
+    let deleted = 0;
+    let index = 0;
+    for (const [path, localFile] of upload) {
+      index++;
+      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
+      if (!localFile) {
+        entries.push({ path, mode: "100644", type: "blob", sha: null });
+        deleted++;
+        continue;
+      }
+      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+      const data = await this.readLocalBinary(localFile.path);
+      this.ensureFileSize(localFile.path, data.byteLength);
+      const blob = await this.api(token, "POST", "/git/blobs", {
+        content: (0, import_obsidian4.arrayBufferToBase64)(data),
+        encoding: "base64"
+      });
+      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      pushed++;
+    }
+    const commitSha = entries.length ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries) : remote.commitSha;
+    const conflicts = plan.conflicts.length;
+    const result = {
+      mode: "push-only",
+      branch,
+      commitSha,
+      pulled: 0,
+      pushed,
+      deleted,
+      conflicts,
+      changed: pushed + deleted + conflicts > 0
+    };
+    this.update("complete", this.plugin.t(result.changed ? "statusCompletePush" : "alreadyInSync"));
+    return result;
+  }
+  async deleteLocalPath(path) {
+    const existing = this.plugin.app.vault.getFileByPath(path);
+    if (existing) {
+      await this.plugin.app.vault.trash(existing, false);
+      return true;
+    }
+    if (await this.plugin.app.vault.adapter.exists(path)) {
+      await this.plugin.app.vault.adapter.trashLocal(path);
+      return true;
+    }
+    return false;
   }
   async pushEntriesWithRemoteRetry(token, branch, plannedRemote, entries) {
     let remote = plannedRemote;
@@ -1182,7 +1446,7 @@ var GitHubSyncService = class {
       return 0;
     }
   }
-  async availableConflictPath(path) {
+  async availableConflictPath(path, occupiedPaths) {
     const slash = path.lastIndexOf("/");
     const directory = slash >= 0 ? path.slice(0, slash + 1) : "";
     const name = slash >= 0 ? path.slice(slash + 1) : path;
@@ -1193,7 +1457,7 @@ var GitHubSyncService = class {
     const device = sanitizeSegment(this.plugin.settings.syncDeviceName || "device");
     let candidate = `${directory}${stem}.conflict-${device}-${stamp}${extension}`;
     let counter = 2;
-    while (await this.plugin.app.vault.adapter.exists(candidate)) {
+    while ((occupiedPaths == null ? void 0 : occupiedPaths.has(candidate)) || await this.plugin.app.vault.adapter.exists(candidate)) {
       candidate = `${directory}${stem}.conflict-${device}-${stamp}-${counter}${extension}`;
       counter++;
     }
@@ -1247,6 +1511,9 @@ var GitHubSyncService = class {
   isIgnored(path) {
     const normalized = (0, import_obsidian4.normalizePath)(path);
     if (HARD_EXCLUDES.some((prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix))) return true;
+    const localSyncState = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
+    if (normalized === localSyncState) return true;
+    if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
     return parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns).some((pattern) => matchesPattern(normalized, pattern));
   }
   ensureFileSize(path, bytes) {
@@ -1254,6 +1521,15 @@ var GitHubSyncService = class {
     if (bytes > maximum) {
       throw new Error(this.plugin.t("fileTooLarge", { limit: this.plugin.settings.syncMaxFileSizeMb, path }));
     }
+  }
+  assertNoMassDeletion(side, base, current) {
+    const detected = detectMassDeletion(base, current);
+    if (!detected) return;
+    throw new Error(this.plugin.t("massDeletionBlocked", {
+      side: this.plugin.t(side === "local" ? "localSide" : "remoteSide"),
+      missing: detected.missing,
+      total: detected.total
+    }));
   }
   commitMessage() {
     const device = this.plugin.settings.syncDeviceName.trim() || "Obsidian";
@@ -1326,6 +1602,53 @@ function createReconcilePlan(local, remote, base) {
   }
   return { upload, pull, conflicts };
 }
+function createPullOnlyPlan(local, remote, base) {
+  var _a;
+  const pull = [];
+  const conflicts = [];
+  const paths = /* @__PURE__ */ new Set([...remote.keys(), ...(_a = base == null ? void 0 : base.keys()) != null ? _a : []]);
+  for (const path of [...paths].sort()) {
+    const localFile = local.get(path);
+    const remoteFile = remote.get(path);
+    const baseFile = base == null ? void 0 : base.get(path);
+    if (remoteFile && !localFile) {
+      pull.push({ path, remote: remoteFile });
+      continue;
+    }
+    const remoteChanged = base ? (remoteFile == null ? void 0 : remoteFile.sha) !== (baseFile == null ? void 0 : baseFile.sha) : Boolean(remoteFile);
+    if (!remoteChanged || (localFile == null ? void 0 : localFile.sha) === (remoteFile == null ? void 0 : remoteFile.sha)) continue;
+    const localChanged = base ? (localFile == null ? void 0 : localFile.sha) !== (baseFile == null ? void 0 : baseFile.sha) : Boolean(localFile);
+    if (localChanged && localFile) conflicts.push({ path, local: localFile, remote: remoteFile != null ? remoteFile : null });
+    else pull.push({ path, remote: remoteFile != null ? remoteFile : null });
+  }
+  return { pull, conflicts };
+}
+function createPushOnlyPlan(local, remote, base) {
+  var _a;
+  const upload = /* @__PURE__ */ new Map();
+  const conflicts = [];
+  const paths = /* @__PURE__ */ new Set([...local.keys(), ...(_a = base == null ? void 0 : base.keys()) != null ? _a : []]);
+  for (const path of [...paths].sort()) {
+    const localFile = local.get(path);
+    const remoteFile = remote.get(path);
+    const baseFile = base == null ? void 0 : base.get(path);
+    const localChanged = base ? (localFile == null ? void 0 : localFile.sha) !== (baseFile == null ? void 0 : baseFile.sha) : Boolean(localFile);
+    if (!localChanged || (localFile == null ? void 0 : localFile.sha) === (remoteFile == null ? void 0 : remoteFile.sha)) continue;
+    const remoteChanged = base ? (remoteFile == null ? void 0 : remoteFile.sha) !== (baseFile == null ? void 0 : baseFile.sha) : Boolean(remoteFile);
+    if (remoteChanged) conflicts.push({ path, local: localFile != null ? localFile : null, remote: remoteFile != null ? remoteFile : null });
+    else upload.set(path, localFile != null ? localFile : null);
+  }
+  return { upload, conflicts };
+}
+function detectMassDeletion(base, current) {
+  const total = base.size;
+  if (total < MASS_DELETION_MINIMUM) return null;
+  let missing = 0;
+  for (const path of base.keys()) {
+    if (!current.has(path)) missing++;
+  }
+  return missing >= MASS_DELETION_MINIMUM && missing / total >= MASS_DELETION_RATIO ? { missing, total } : null;
+}
 async function gitBlobSha(data) {
   const header = new TextEncoder().encode(`blob ${data.byteLength}\0`);
   const payload = new Uint8Array(header.byteLength + data.byteLength);
@@ -1368,6 +1691,18 @@ var RemoteChangedDuringSyncError = class extends Error {
 };
 function sleep(milliseconds) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+async function mapWithConcurrency(items, limit, mapper) {
+  const output = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      output[index] = await mapper(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return output;
 }
 function isRemoteChangedDuringSync(error) {
   return error instanceof RemoteChangedDuringSyncError || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
@@ -1426,6 +1761,12 @@ var EN = {
   connectionFailed: "Connection failed",
   syncNow: "Sync now",
   syncNowLong: "Run two-way sync now",
+  pullOnly: "Pull only",
+  pullOnlyLong: "Pull remote changes only",
+  pullOnlyHint: "Apply remote changes locally without uploading. Local conflicts are kept as conflict copies.",
+  pushOnly: "Push only",
+  pushOnlyLong: "Push local changes only",
+  pushOnlyHint: "Upload local changes without applying remote changes. Remote conflicts are kept as conflict copies.",
   syncing: "Syncing\u2026",
   syncOnStartup: "Sync on startup",
   syncOnStartupDescription: "Sync once after Obsidian opens this vault.",
@@ -1498,6 +1839,7 @@ var EN = {
   emptyFolder: "This folder is empty.",
   readingHistory: "Reading history ({count})",
   noHistory: "No reading history yet.",
+  showMoreHistory: "Show {count} more",
   pageOutline: "On this page",
   noHeadings: "The current note has no headings.",
   openDashboard: "Open GitSync Portal",
@@ -1511,6 +1853,8 @@ var EN = {
   focusDisabled: "Focus reading mode disabled",
   syncAlreadyRunning: "A sync is already in progress.",
   syncSummary: "Pulled {pulled}, uploaded {pushed}, deleted {deleted}, conflicts {conflicts}",
+  syncSummaryPull: "Pull only: updated {pulled}, deleted {deleted}, conflicts preserved {conflicts}",
+  syncSummaryPush: "Push only: uploaded {pushed}, deleted {deleted}, conflicts preserved {conflicts}",
   alreadyInSync: "Local and remote are already in sync",
   syncCompleteNotice: "GitHub sync complete: {summary}",
   missingHomeNote: "No valid home note is configured. Run \u201CSet current note as home\u201D from an open note.",
@@ -1525,12 +1869,19 @@ var EN = {
   syncRetryFailed: "Sync retries failed.",
   statusHashing: "Calculating local file fingerprints\u2026",
   statusReconciling: "Reconciling local and remote changes\u2026",
+  statusReconcilingPull: "Preparing remote changes for a pull-only sync\u2026",
+  statusReconcilingPush: "Preparing local changes for a push-only sync\u2026",
   statusPulling: "Applying remote change: {path}",
   statusPushing: "Uploading local change: {path}",
   statusComplete: "Sync complete",
+  statusCompletePull: "Pull-only sync complete",
+  statusCompletePush: "Push-only sync complete",
   statusCommitRetry: "The remote just changed. Committing against the latest version (attempt {attempt})\u2026",
   remoteSamePathChanged: "The remote changed the same path during sync. Reconciling again.",
   remoteContinuouslyChanged: "The remote kept changing, so the sync commit failed.",
+  localSide: "local vault",
+  remoteSide: "GitHub repository",
+  massDeletionBlocked: "Safety stop: {side} is missing {missing} of {total} previously synchronized files. Sync was stopped to prevent a large accidental deletion. Restore or review the missing files before syncing again.",
   tokenRequired: "Save a GitHub token in GitSync Portal settings first.",
   remoteTreeTooLarge: "The remote repository tree exceeds GitHub's recursive read limit. Sync stopped to avoid missing files.",
   statusScanning: "Scanning: {path}",
@@ -1554,6 +1905,10 @@ var EN = {
   quizSourceRequired: "Provide a complete quiz, a quiz ID, or source: current.",
   previousQuestion: "Previous",
   nextQuestion: "Next",
+  quizProgress: "Question {current}/{total} \xB7 submitted {submitted}/{total}",
+  submitQuestion: "Submit answer",
+  retryQuestion: "Answer again",
+  correctAnswer: "Correct answer: {answer}",
   rescore: "Score again",
   submit: "Submit",
   retryQuiz: "Try again",
@@ -1596,6 +1951,12 @@ var ZH = {
   connectionFailed: "\u8FDE\u63A5\u5931\u8D25",
   syncNow: "\u7ACB\u5373\u540C\u6B65",
   syncNowLong: "\u7ACB\u5373\u53CC\u5411\u540C\u6B65",
+  pullOnly: "\u4EC5\u62C9\u53D6",
+  pullOnlyLong: "\u4EC5\u62C9\u53D6\u8FDC\u7AEF\u66F4\u6539",
+  pullOnlyHint: "\u53EA\u628A\u8FDC\u7AEF\u66F4\u6539\u5E94\u7528\u5230\u672C\u5730\uFF0C\u4E0D\u4E0A\u4F20\uFF1B\u53D1\u751F\u51B2\u7A81\u65F6\u4F1A\u4FDD\u7559\u672C\u5730 conflict \u526F\u672C\u3002",
+  pushOnly: "\u4EC5\u4E0A\u4F20",
+  pushOnlyLong: "\u4EC5\u4E0A\u4F20\u672C\u5730\u66F4\u6539",
+  pushOnlyHint: "\u53EA\u628A\u672C\u5730\u66F4\u6539\u4E0A\u4F20\u5230\u8FDC\u7AEF\uFF0C\u4E0D\u62C9\u53D6\uFF1B\u53D1\u751F\u51B2\u7A81\u65F6\u4F1A\u4FDD\u7559\u8FDC\u7AEF conflict \u526F\u672C\u3002",
   syncing: "\u540C\u6B65\u4E2D\u2026",
   syncOnStartup: "\u542F\u52A8\u65F6\u540C\u6B65",
   syncOnStartupDescription: "Obsidian \u6253\u5F00\u5F53\u524D Vault \u540E\u81EA\u52A8\u540C\u6B65\u4E00\u6B21\u3002",
@@ -1668,6 +2029,7 @@ var ZH = {
   emptyFolder: "\u5F53\u524D\u76EE\u5F55\u4E3A\u7A7A\u3002",
   readingHistory: "\u9605\u8BFB\u5386\u53F2\uFF08{count}\uFF09",
   noHistory: "\u6682\u65E0\u9605\u8BFB\u5386\u53F2\u3002",
+  showMoreHistory: "\u518D\u663E\u793A {count} \u6761",
   pageOutline: "\u672C\u9875\u76EE\u5F55",
   noHeadings: "\u5F53\u524D\u7B14\u8BB0\u6CA1\u6709\u6807\u9898\u3002",
   openDashboard: "\u6253\u5F00 GitSync Portal",
@@ -1681,6 +2043,8 @@ var ZH = {
   focusDisabled: "\u5DF2\u9000\u51FA\u4E13\u6CE8\u9605\u8BFB\u6A21\u5F0F",
   syncAlreadyRunning: "\u540C\u6B65\u5DF2\u7ECF\u5728\u8FDB\u884C\u4E2D\u3002",
   syncSummary: "\u62C9\u53D6 {pulled}\u3001\u4E0A\u4F20 {pushed}\u3001\u5220\u9664 {deleted}\u3001\u51B2\u7A81 {conflicts}",
+  syncSummaryPull: "\u4EC5\u62C9\u53D6\uFF1A\u66F4\u65B0 {pulled}\u3001\u5220\u9664 {deleted}\u3001\u4FDD\u7559\u51B2\u7A81 {conflicts}",
+  syncSummaryPush: "\u4EC5\u4E0A\u4F20\uFF1A\u4E0A\u4F20 {pushed}\u3001\u5220\u9664 {deleted}\u3001\u4FDD\u7559\u51B2\u7A81 {conflicts}",
   alreadyInSync: "\u672C\u5730\u4E0E\u8FDC\u7AEF\u5DF2\u7ECF\u4E00\u81F4",
   syncCompleteNotice: "GitHub \u540C\u6B65\u5B8C\u6210\uFF1A{summary}",
   missingHomeNote: "\u5C1A\u672A\u8BBE\u7F6E\u6709\u6548\u7684\u9996\u9875\u7B14\u8BB0\u3002\u53EF\u5728\u5F53\u524D\u7B14\u8BB0\u4E2D\u8FD0\u884C\u201C\u5C06\u5F53\u524D\u7B14\u8BB0\u8BBE\u4E3A\u9996\u9875\u201D\u3002",
@@ -1695,12 +2059,19 @@ var ZH = {
   syncRetryFailed: "\u540C\u6B65\u91CD\u8BD5\u5931\u8D25\u3002",
   statusHashing: "\u6B63\u5728\u8BA1\u7B97\u672C\u5730\u6587\u4EF6\u6307\u7EB9\u2026",
   statusReconciling: "\u6B63\u5728\u5408\u5E76\u672C\u5730\u4E0E\u8FDC\u7AEF\u53D8\u66F4\u2026",
+  statusReconcilingPull: "\u6B63\u5728\u51C6\u5907\u4EC5\u62C9\u53D6\u7684\u8FDC\u7AEF\u66F4\u6539\u2026",
+  statusReconcilingPush: "\u6B63\u5728\u51C6\u5907\u4EC5\u4E0A\u4F20\u7684\u672C\u5730\u66F4\u6539\u2026",
   statusPulling: "\u6B63\u5728\u5E94\u7528\u8FDC\u7AEF\u53D8\u66F4\uFF1A{path}",
   statusPushing: "\u6B63\u5728\u4E0A\u4F20\u672C\u5730\u53D8\u66F4\uFF1A{path}",
   statusComplete: "\u540C\u6B65\u5B8C\u6210",
+  statusCompletePull: "\u4EC5\u62C9\u53D6\u5B8C\u6210",
+  statusCompletePush: "\u4EC5\u4E0A\u4F20\u5B8C\u6210",
   statusCommitRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u57FA\u4E8E\u6700\u65B0\u7248\u672C\u63D0\u4EA4\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
   remoteSamePathChanged: "\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u4FEE\u6539\u4E86\u540C\u4E00\u8DEF\u5F84\uFF0C\u6B63\u5728\u91CD\u65B0\u5408\u5E76\u3002",
   remoteContinuouslyChanged: "\u8FDC\u7AEF\u6301\u7EED\u53D8\u5316\uFF0C\u540C\u6B65\u63D0\u4EA4\u5931\u8D25\u3002",
+  localSide: "\u672C\u5730\u77E5\u8BC6\u5E93",
+  remoteSide: "GitHub \u4ED3\u5E93",
+  massDeletionBlocked: "\u5B89\u5168\u7194\u65AD\uFF1A{side} \u7F3A\u5C11\u4E0A\u6B21\u5DF2\u540C\u6B65\u7684 {total} \u4E2A\u6587\u4EF6\u4E2D\u7684 {missing} \u4E2A\u3002\u4E3A\u9632\u6B62\u5927\u89C4\u6A21\u8BEF\u5220\uFF0C\u5DF2\u505C\u6B62\u540C\u6B65\uFF1B\u8BF7\u5148\u6062\u590D\u6216\u6838\u5BF9\u7F3A\u5931\u6587\u4EF6\u3002",
   tokenRequired: "\u8BF7\u5148\u5728 GitSync Portal \u8BBE\u7F6E\u4E2D\u4FDD\u5B58 GitHub token\u3002",
   remoteTreeTooLarge: "\u8FDC\u7AEF\u4ED3\u5E93\u6587\u4EF6\u6811\u8D85\u8FC7 GitHub \u5355\u6B21\u9012\u5F52\u8BFB\u53D6\u4E0A\u9650\uFF0C\u5DF2\u505C\u6B62\u540C\u6B65\u4EE5\u907F\u514D\u9057\u6F0F\u6587\u4EF6\u3002",
   statusScanning: "\u6B63\u5728\u626B\u63CF\uFF1A{path}",
@@ -1724,6 +2095,10 @@ var ZH = {
   quizSourceRequired: "\u9700\u8981\u5B8C\u6574 quiz\u3001\u9898\u5E93 id\uFF0C\u6216 source: current\u3002",
   previousQuestion: "\u4E0A\u4E00\u9898",
   nextQuestion: "\u4E0B\u4E00\u9898",
+  quizProgress: "\u7B2C {current}/{total} \u9898 \xB7 \u5DF2\u63D0\u4EA4 {submitted}/{total}",
+  submitQuestion: "\u63D0\u4EA4\u672C\u9898",
+  retryQuestion: "\u91CD\u65B0\u4F5C\u7B54\u672C\u9898",
+  correctAnswer: "\u6B63\u786E\u7B54\u6848\uFF1A{answer}",
   rescore: "\u91CD\u65B0\u8BC4\u5206",
   submit: "\u63D0\u4EA4",
   retryQuiz: "\u91CD\u65B0\u4F5C\u7B54",
@@ -2823,8 +3198,21 @@ var GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
 var LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"];
 var SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
 var LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
+var PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
+  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
+  ...LEGACY_PLUGIN_IDS2.map((id) => `.obsidian/plugins/${id}/`),
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/"
+].join("\n");
 var DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
+  "*.conflict-*",
+  "**/*.conflict-*",
   ".obsidian/workspace*.json",
   ".obsidian/page-preview.json",
   `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
@@ -2916,7 +3304,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.syncStatus = { stage: "idle", message: "" };
     this.githubSync = new GitHubSyncService(this, (status) => {
       this.syncStatus = status;
-      void this.refreshDashboard();
+      this.updateDashboardSyncStatus();
     });
   }
   async onload() {
@@ -2935,6 +3323,16 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       id: "sync-github-now",
       name: this.t("syncGitHubNow"),
       callback: () => void this.syncNow()
+    });
+    this.addCommand({
+      id: "pull-github-now",
+      name: this.t("pullOnlyLong"),
+      callback: () => void this.syncNow(true, "pull-only")
+    });
+    this.addCommand({
+      id: "push-github-now",
+      name: this.t("pushOnlyLong"),
+      callback: () => void this.syncNow(true, "push-only")
     });
     this.addCommand({
       id: "open-home-note",
@@ -3028,7 +3426,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       lastSyncSummary: localSyncState.lastSyncSummary
     };
     let migrated = legacyData !== null || (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
-    if ([GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS, GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
@@ -3072,17 +3470,17 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     const result = await this.githubSync.testConnection();
     return `${result.repository} \xB7 ${result.branch} \xB7 ${result.commitSha.slice(0, 7)}`;
   }
-  async syncNow(showNotice = true) {
+  async syncNow(showNotice = true, mode = "two-way") {
     if (this.githubSync.isRunning) {
       if (showNotice) new import_obsidian5.Notice(this.t("syncAlreadyRunning"));
       return;
     }
     try {
       await this.saveSettings();
-      const result = await this.githubSync.sync();
-      this.settings.lastSyncedCommit = result.commitSha;
+      const result = await this.githubSync.sync(mode);
+      if (mode !== "push-only") this.settings.lastSyncedCommit = result.commitSha;
       this.settings.lastSyncAt = Date.now();
-      this.settings.lastSyncSummary = result.changed ? this.t("syncSummary", {
+      this.settings.lastSyncSummary = result.changed ? this.t(mode === "pull-only" ? "syncSummaryPull" : mode === "push-only" ? "syncSummaryPush" : "syncSummary", {
         pulled: result.pulled,
         pushed: result.pushed,
         deleted: result.deleted,
@@ -3203,6 +3601,17 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
+  }
+  updateDashboardSyncStatus() {
+    const leaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)
+    ];
+    leaves.forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
+    });
   }
   scheduleSyncOnSave() {
     if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;

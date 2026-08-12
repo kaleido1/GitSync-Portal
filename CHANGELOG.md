@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.1.0] - 2026-08-13
+
+### Added
+
+- Added explicit **Pull only** and **Push only** dashboard actions and Command Palette commands alongside normal two-way synchronization.
+- Added mass-deletion safeguards that stop suspicious local or remote deletion bursts before applying them.
+- Added per-question quiz retry controls and clear correct-answer explanations.
+
+### Changed
+
+- Refined the dashboard layout, sync controls, file metadata, favorites, mobile styling, and accessibility semantics.
+- Batched long reading-history lists and limited sync-status updates to the affected card for smoother interaction.
+- Reconciled sync conflicts concurrently and excluded generated conflict copies from all later synchronization passes.
+
+### Fixed
+
+- Fixed matching quiz questions dropping earlier selections whenever a later row was changed.
+- Preserved displaced content correctly during one-way synchronization without creating conflict-copy loops.
+- Corrected shared plugin-state upload counts and hardened protection of GitSync Portal's runtime state.
+
 ## [2.0.1] - 2026-08-12
 
 ### Changed

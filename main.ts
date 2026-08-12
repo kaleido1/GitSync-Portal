@@ -10,7 +10,7 @@ import {
 import { GitSyncPortalDashboardView, LEGACY_VIEW_TYPE_GITSYNC_PORT, LEGACY_VIEW_TYPE_VIEWER, VIEW_TYPE_GITSYNC_PORTAL } from "./src/viewer-view";
 import { GitSyncPortalSettingTab } from "./src/settings";
 import { registerQuizProcessors, QuizProgress } from "./src/quiz";
-import { GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
+import { GitHubSyncMode, GitHubSyncService, GitHubSyncStatus } from "./src/github-sync";
 import { LANGUAGE_OPTIONS, LanguageSetting, TranslationKey, formatDateTime, translate } from "./src/i18n";
 
 const PLUGIN_ID = "gitsync-portal";
@@ -19,8 +19,21 @@ const GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
 const LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"] as const;
 const SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
 const LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
+const PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS = [
+  ".DS_Store",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
+  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
+  ...LEGACY_PLUGIN_IDS.map((id) => `.obsidian/plugins/${id}/`),
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+  "node_modules/",
+].join("\n");
 const DEFAULT_SYNC_IGNORE_PATTERNS = [
   ".DS_Store",
+  "*.conflict-*",
+  "**/*.conflict-*",
   ".obsidian/workspace*.json",
   ".obsidian/page-preview.json",
   `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
@@ -151,7 +164,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   syncStatus: GitHubSyncStatus = { stage: "idle", message: "" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
     this.syncStatus = status;
-    void this.refreshDashboard();
+    this.updateDashboardSyncStatus();
   });
 
   async onload(): Promise<void> {
@@ -171,6 +184,16 @@ export default class GitSyncPortalPlugin extends Plugin {
       id: "sync-github-now",
       name: this.t("syncGitHubNow"),
       callback: () => void this.syncNow(),
+    });
+    this.addCommand({
+      id: "pull-github-now",
+      name: this.t("pullOnlyLong"),
+      callback: () => void this.syncNow(true, "pull-only"),
+    });
+    this.addCommand({
+      id: "push-github-now",
+      name: this.t("pushOnlyLong"),
+      callback: () => void this.syncNow(true, "push-only"),
     });
     this.addCommand({
       id: "open-home-note",
@@ -273,7 +296,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     let migrated = legacyData !== null
       || loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
-    if ([GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
+    if ([PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS, GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
       this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
       migrated = true;
     }
@@ -324,18 +347,18 @@ export default class GitSyncPortalPlugin extends Plugin {
     return `${result.repository} · ${result.branch} · ${result.commitSha.slice(0, 7)}`;
   }
 
-  async syncNow(showNotice = true): Promise<void> {
+  async syncNow(showNotice = true, mode: GitHubSyncMode = "two-way"): Promise<void> {
     if (this.githubSync.isRunning) {
       if (showNotice) new Notice(this.t("syncAlreadyRunning"));
       return;
     }
     try {
       await this.saveSettings();
-      const result = await this.githubSync.sync();
-      this.settings.lastSyncedCommit = result.commitSha;
+      const result = await this.githubSync.sync(mode);
+      if (mode !== "push-only") this.settings.lastSyncedCommit = result.commitSha;
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed
-        ? this.t("syncSummary", {
+        ? this.t(mode === "pull-only" ? "syncSummaryPull" : mode === "push-only" ? "syncSummaryPush" : "syncSummary", {
           pulled: result.pulled,
           pushed: result.pushed,
           deleted: result.deleted,
@@ -480,6 +503,18 @@ export default class GitSyncPortalPlugin extends Plugin {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
+  }
+
+  private updateDashboardSyncStatus(): void {
+    const leaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
+      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER),
+    ];
+    leaves.forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
+    });
   }
 
   private scheduleSyncOnSave(): void {
