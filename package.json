@@ -1,6 +1,6 @@
 {
   "name": "gitsync-portal",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "kaleido1",

@@ -6,16 +6,19 @@ export const LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
+const HISTORY_BATCH_SIZE = 40;
 
 export class GitSyncPortalDashboardView extends ItemView {
   private activeTab: DashboardTab = "home";
   private searchQuery = "";
   private searchSequence = 0;
   private searchTimer: number | null = null;
+  private syncUpdateFrame: number | null = null;
   private isSearchComposing = false;
   private currentFolderPath = "";
   private folderBackStack: string[] = [];
   private folderForwardStack: string[] = [];
+  private historyVisibleCount = HISTORY_BATCH_SIZE;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: GitSyncPortalPlugin) {
     super(leaf);
@@ -40,6 +43,7 @@ export class GitSyncPortalDashboardView extends ItemView {
 
   async onClose(): Promise<void> {
     if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+    if (this.syncUpdateFrame !== null) window.cancelAnimationFrame(this.syncUpdateFrame);
   }
 
   async render(): Promise<void> {
@@ -50,7 +54,9 @@ export class GitSyncPortalDashboardView extends ItemView {
     root.addClass("ov-dashboard");
 
     const header = root.createDiv({ cls: "ov-dashboard-header" });
-    const titleBox = header.createDiv();
+    const brand = header.createDiv({ cls: "ov-dashboard-brand" });
+    setIcon(brand.createSpan({ cls: "ov-brand-icon" }), "cloud-cog");
+    const titleBox = brand.createDiv();
     titleBox.createEl("h2", { text: this.plugin.t("appName") });
     titleBox.createEl("small", { text: this.plugin.t("notesCount", { count: this.app.vault.getMarkdownFiles().length }) });
     const refresh = header.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": this.plugin.t("refresh") } });
@@ -58,9 +64,11 @@ export class GitSyncPortalDashboardView extends ItemView {
     refresh.addEventListener("click", () => void this.render());
 
     this.renderTabs(root);
-    this.renderActiveNote(root);
 
-    if (this.activeTab === "home") await this.renderHome(root);
+    if (this.activeTab === "home") {
+      this.renderActiveNote(root);
+      await this.renderHome(root);
+    }
     if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
     if (this.activeTab === "favorites") this.renderTrackedItems(root, this.plugin.t("tabFavorites"), this.plugin.settings.favorites, this.plugin.t("noFavorites"), true);
     if (this.activeTab === "history") this.renderHistory(root);
@@ -68,7 +76,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   }
 
   private renderTabs(root: HTMLElement): void {
-    const tabs = root.createDiv({ cls: "ov-tabs" });
+    const tabs = root.createDiv({ cls: "ov-tabs", attr: { role: "tablist" } });
     const choices: Array<[DashboardTab, string, string]> = [
       ["home", this.plugin.t("tabHome"), "home"],
       ["files", this.plugin.t("tabFiles"), "files"],
@@ -78,13 +86,14 @@ export class GitSyncPortalDashboardView extends ItemView {
     choices.forEach(([tab, label, icon]) => {
       const button = tabs.createEl("button", {
         cls: `ov-tab${this.activeTab === tab ? " is-active" : ""}`,
-        attr: { "aria-pressed": String(this.activeTab === tab) },
+        attr: { role: "tab", "aria-selected": String(this.activeTab === tab) },
       });
       setIcon(button.createSpan({ cls: "ov-tab-icon" }), icon);
       button.createSpan({ text: label });
       button.addEventListener("click", () => {
         this.activeTab = tab;
         this.searchQuery = "";
+        if (tab === "history") this.historyVisibleCount = HISTORY_BATCH_SIZE;
         void this.render();
       });
     });
@@ -94,11 +103,12 @@ export class GitSyncPortalDashboardView extends ItemView {
     const file = this.app.workspace.getActiveFile();
     if (!(file instanceof TFile) || file.extension !== "md") return;
     const card = root.createDiv({ cls: "ov-active-card" });
-    card.createEl("small", { text: this.plugin.t("currentNote") });
-    card.createEl("strong", { text: file.basename });
-    card.createEl("span", { text: file.path, cls: "ov-muted ov-path" });
+    setIcon(card.createSpan({ cls: "ov-active-note-icon" }), "file-text");
+    const labels = card.createDiv({ cls: "ov-active-note-labels" });
+    labels.createEl("small", { text: this.plugin.t("currentNote") });
+    labels.createEl("strong", { text: file.basename });
     const actions = card.createDiv({ cls: "ov-inline-actions" });
-    this.iconButton(actions, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
+    this.iconButton(actions, "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file), this.plugin.isFavorite(file.path));
     this.iconButton(actions, "house-plus", this.plugin.t("setAsHome"), () => void this.plugin.setHomeNote(file));
   }
 
@@ -121,10 +131,10 @@ export class GitSyncPortalDashboardView extends ItemView {
     const favorites = this.plugin.settings.favorites.map((path) => this.plugin.getFileOrFolder(path)).filter((item): item is ViewerListItem => item !== null).slice(0, 5);
     this.renderSection(root, this.plugin.t("tabFavorites"), favorites, this.plugin.t("noFavoriteNotes"), true);
 
+    this.renderOutline(root);
+
     const recent = this.plugin.settings.history.map((path) => this.plugin.getMarkdownFile(path)).filter((file): file is TFile => file !== null).slice(0, 8);
     this.renderSection(root, this.plugin.t("recentReading"), recent, this.plugin.t("recentReadingEmpty"), false);
-
-    this.renderOutline(root);
   }
 
   private renderSyncCard(root: HTMLElement): void {
@@ -134,13 +144,32 @@ export class GitSyncPortalDashboardView extends ItemView {
     const title = header.createDiv();
     title.createEl("strong", { text: this.plugin.t("githubSync") });
     title.createEl("small", { text: `${this.plugin.settings.syncRepository} · ${this.plugin.settings.syncBranch || this.plugin.t("defaultBranch")}` });
-    const sync = header.createEl("button", { text: this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow"), cls: "mod-cta" });
+    const sync = header.createEl("button", { cls: "mod-cta ov-sync-primary" });
+    setIcon(sync.createSpan(), "refresh-cw");
+    sync.createSpan({ text: this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow") });
     sync.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
     sync.addEventListener("click", () => void this.plugin.syncNow());
     card.createDiv({
       text: this.plugin.getGitHubToken() ? status.message : this.plugin.t("tokenMissing"),
       cls: "ov-sync-message",
     });
+    const directionalActions = card.createDiv({ cls: "ov-sync-direction-actions" });
+    const pull = directionalActions.createEl("button", {
+      cls: "ov-tonal-button",
+      attr: { title: this.plugin.t("pullOnlyHint"), "aria-label": this.plugin.t("pullOnlyLong") },
+    });
+    setIcon(pull.createSpan(), "cloud-download");
+    pull.createSpan({ text: this.plugin.t("pullOnly") });
+    pull.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    pull.addEventListener("click", () => void this.plugin.syncNow(true, "pull-only"));
+    const push = directionalActions.createEl("button", {
+      cls: "ov-tonal-button",
+      attr: { title: this.plugin.t("pushOnlyHint"), "aria-label": this.plugin.t("pushOnlyLong") },
+    });
+    setIcon(push.createSpan(), "cloud-upload");
+    push.createSpan({ text: this.plugin.t("pushOnly") });
+    push.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    push.addEventListener("click", () => void this.plugin.syncNow(true, "push-only"));
     if (status.total && status.current !== undefined) {
       const progress = card.createEl("progress", { attr: { max: String(status.total), value: String(status.current) } });
       progress.value = status.current;
@@ -151,6 +180,37 @@ export class GitSyncPortalDashboardView extends ItemView {
         text: `${this.plugin.formatDateTime(this.plugin.settings.lastSyncAt)} · ${this.plugin.settings.lastSyncSummary || this.plugin.t("notSynced")}`,
         cls: "ov-muted",
       });
+    }
+  }
+
+  updateSyncStatus(): void {
+    if (this.syncUpdateFrame !== null) return;
+    this.syncUpdateFrame = window.requestAnimationFrame(() => {
+      this.syncUpdateFrame = null;
+      this.applySyncStatus();
+    });
+  }
+
+  private applySyncStatus(): void {
+    const current = this.contentEl.querySelector<HTMLElement>(".ov-sync-card");
+    if (!current) return;
+    const status = this.plugin.syncStatus;
+    current.className = `ov-sync-card is-${status.stage}`;
+    const message = current.querySelector<HTMLElement>(".ov-sync-message");
+    if (message) message.textContent = this.plugin.getGitHubToken() ? status.message : this.plugin.t("tokenMissing");
+    current.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+      button.disabled = this.plugin.githubSync.isRunning || !this.plugin.getGitHubToken();
+    });
+    const primaryLabel = current.querySelector<HTMLElement>(".ov-sync-primary span:last-child");
+    if (primaryLabel) primaryLabel.textContent = this.plugin.t(this.plugin.githubSync.isRunning ? "syncing" : "syncNow");
+
+    let progress = current.querySelector<HTMLProgressElement>("progress");
+    if (status.total && status.current !== undefined) {
+      if (!progress) progress = current.createEl("progress");
+      progress.value = status.current;
+      progress.max = status.total;
+    } else {
+      progress?.remove();
     }
   }
 
@@ -267,9 +327,9 @@ export class GitSyncPortalDashboardView extends ItemView {
         setIcon(open.createSpan({ cls: "ov-file-icon" }), "folder");
         const labels = open.createSpan({ cls: "ov-file-labels" });
         labels.createEl("strong", { text: child.name || this.plugin.t("rootFolder") });
-        labels.createEl("small", { text: `${this.plugin.t("itemCount", { count: child.children.length })} · ${child.path || this.plugin.t("vaultRoot")}` });
+        labels.createEl("small", { text: this.plugin.t("itemCount", { count: child.children.length }) });
         open.addEventListener("click", () => this.openFolder(child.path, true));
-        this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
+        this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child), this.plugin.isFavorite(child.path));
         return;
       }
       if (child instanceof TFile) {
@@ -277,22 +337,35 @@ export class GitSyncPortalDashboardView extends ItemView {
         setIcon(open.createSpan({ cls: "ov-file-icon" }), child.extension === "md" ? "file-text" : "file");
         const labels = open.createSpan({ cls: "ov-file-labels" });
         labels.createEl("strong", { text: child.basename });
-        labels.createEl("small", { text: child.path });
+        labels.createEl("small", { text: this.fileMeta(child) });
         open.addEventListener("click", () => this.selectAndOpenFile(row, child));
         if (child.extension === "md") {
-          this.iconButton(row, this.plugin.isFavorite(child.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child));
+          this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(child.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(child), this.plugin.isFavorite(child.path));
         }
       }
     });
   }
 
   private renderHistory(root: HTMLElement): void {
+    const total = this.plugin.settings.history.length;
     const heading = root.createDiv({ cls: "ov-section-heading" });
-    heading.createEl("h3", { text: this.plugin.t("readingHistory", { count: this.plugin.settings.history.length }) });
-    const clear = heading.createEl("button", { text: this.plugin.t("clear"), cls: "mod-warning" });
-    clear.disabled = this.plugin.settings.history.length === 0;
+    heading.createEl("h3", { text: this.plugin.t("readingHistory", { count: total }) });
+    const clear = heading.createEl("button", { text: this.plugin.t("clear"), cls: "ov-text-button is-danger" });
+    clear.disabled = total === 0;
     clear.addEventListener("click", () => void this.plugin.clearHistory());
-    this.renderTrackedItems(root, "", this.plugin.settings.history, this.plugin.t("noHistory"), false, false);
+    const visiblePaths = this.plugin.settings.history.slice(0, this.historyVisibleCount);
+    this.renderTrackedItems(root, "", visiblePaths, this.plugin.t("noHistory"), false, false);
+    const remaining = Math.max(0, total - visiblePaths.length);
+    if (remaining) {
+      const more = root.createEl("button", {
+        text: this.plugin.t("showMoreHistory", { count: Math.min(HISTORY_BATCH_SIZE, remaining) }),
+        cls: "ov-load-more ov-tonal-button",
+      });
+      more.addEventListener("click", () => {
+        this.historyVisibleCount += HISTORY_BATCH_SIZE;
+        void this.render();
+      });
+    }
   }
 
   private renderTrackedItems(root: HTMLElement, title: string, paths: string[], emptyText: string, showFavorite: boolean, showHeading = true): void {
@@ -321,7 +394,11 @@ export class GitSyncPortalDashboardView extends ItemView {
       setIcon(open.createSpan({ cls: "ov-file-icon" }), file instanceof TFolder ? "folder" : "file-text");
       const labels = open.createSpan({ cls: "ov-file-labels" });
       labels.createEl("strong", { text: file instanceof TFolder ? file.name || this.plugin.t("rootFolder") : file.basename });
-      labels.createEl("small", { text: file instanceof TFolder ? `${this.plugin.t("itemCount", { count: file.children.length })} · ${file.path || this.plugin.t("vaultRoot")}` : file.path });
+      labels.createEl("small", {
+        text: file instanceof TFolder
+          ? `${this.plugin.t("itemCount", { count: file.children.length })} · ${this.parentLabel(file.path)}`
+          : this.fileMeta(file),
+      });
       open.addEventListener("click", () => {
         if (file instanceof TFolder) {
           this.activeTab = "files";
@@ -332,7 +409,7 @@ export class GitSyncPortalDashboardView extends ItemView {
         }
       });
       if (showFavorite) {
-        this.iconButton(row, this.plugin.isFavorite(file.path) ? "star-off" : "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file));
+        this.iconButton(row, "star", this.plugin.t(this.plugin.isFavorite(file.path) ? "unfavorite" : "favorite"), () => void this.plugin.toggleFavorite(file), this.plugin.isFavorite(file.path));
       }
     });
   }
@@ -354,11 +431,24 @@ export class GitSyncPortalDashboardView extends ItemView {
     });
   }
 
-  private iconButton(root: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
-    const button = root.createEl("button", { cls: "clickable-icon ov-icon-button", attr: { "aria-label": label, title: label } });
+  private iconButton(root: HTMLElement, icon: string, label: string, action: () => void, active = false): HTMLButtonElement {
+    const button = root.createEl("button", {
+      cls: `clickable-icon ov-icon-button${active ? " is-active" : ""}`,
+      attr: { "aria-label": label, title: label, ...(active ? { "aria-pressed": "true" } : {}) },
+    });
     setIcon(button, icon);
     button.addEventListener("click", action);
     return button;
+  }
+
+  private fileMeta(file: TFile): string {
+    const parent = this.parentLabel(file.path);
+    return `${parent} · ${file.extension.toLocaleUpperCase()}`;
+  }
+
+  private parentLabel(path: string): string {
+    const slash = path.lastIndexOf("/");
+    return slash > 0 ? path.slice(0, slash) : this.plugin.t("vaultRoot");
   }
 
   private markSelectedFile(row: HTMLElement, file: TFile): void {

@@ -30,7 +30,7 @@ const testModule = new Module("github-sync-test");
 testModule.filename = "github-sync-test.cjs";
 testModule.paths = Module._nodeModulePaths(process.cwd());
 testModule._compile(output, testModule.filename);
-const { GitHubSyncService, createReconcilePlan, gitBlobSha } = testModule.exports;
+const { GitHubSyncService, createPullOnlyPlan, createPushOnlyPlan, createReconcilePlan, detectMassDeletion, gitBlobSha } = testModule.exports;
 Module._load = originalLoad;
 
 const buffer = (value) => new TextEncoder().encode(value).buffer;
@@ -85,6 +85,32 @@ const first = createReconcilePlan(
 assert.deepEqual([...first.upload.keys()], ["local.md"]);
 assert.deepEqual(first.pull.map((entry) => entry.path), ["remote.md"]);
 assert.deepEqual(first.conflicts.map((entry) => entry.path), ["conflict.md"]);
+
+const pullOnly = createPullOnlyPlan(local, remote, base);
+assert.deepEqual(pullOnly.pull.map((entry) => entry.path), ["deleted-local.md", "local-delete.md", "remote-delete.md", "remote-only.md", "remote.md"]);
+assert.deepEqual(pullOnly.conflicts.map((entry) => entry.path), ["both.md", "deleted-remote.md"]);
+assert.equal(pullOnly.pull.some((entry) => entry.path === "local.md"), false);
+
+const pullOnlyBootstrap = createPullOnlyPlan(new Map(), remote, remote);
+assert.deepEqual(
+  pullOnlyBootstrap.pull.map((entry) => entry.path),
+  [...remote.keys()].sort(),
+);
+assert.deepEqual(pullOnlyBootstrap.conflicts, []);
+
+const pushOnly = createPushOnlyPlan(local, remote, base);
+assert.deepEqual([...pushOnly.upload.keys()], ["local-delete.md", "local-only.md", "local.md"]);
+assert.deepEqual(pushOnly.conflicts.map((entry) => entry.path), ["both.md", "deleted-local.md", "deleted-remote.md"]);
+assert.equal(pushOnly.upload.has("remote.md"), false);
+
+const safetyBase = map(Array.from({ length: 100 }, (_, index) => {
+  const path = `note-${index}.md`;
+  return [path, remoteFile(path, `base-${index}`)];
+}));
+const safeCurrent = new Map([...safetyBase].slice(0, 81));
+const unsafeCurrent = new Map([...safetyBase].slice(0, 70));
+assert.equal(detectMassDeletion(safetyBase, safeCurrent), null);
+assert.deepEqual(detectMassDeletion(safetyBase, unsafeCurrent), { missing: 30, total: 100 });
 
 const listings = {
   "/": {
@@ -152,6 +178,8 @@ const fakePlugin = {
   t: (key, values = {}) => `${key}${Object.keys(values).length ? `:${JSON.stringify(values)}` : ""}`,
   settings: { syncIgnorePatterns: [
     ".DS_Store",
+    "*.conflict-*",
+    "**/*.conflict-*",
     ".obsidian/workspace*.json",
     ".obsidian/page-preview.json",
     ".obsidian/plugins/gitsync-portal/local-sync-state.json",
@@ -183,6 +211,10 @@ assert.deepEqual(JSON.parse(protectedWrite), ["dataview", "gitsync-portal"]);
 assert.equal(service.isSelfCoreFile(".obsidian/community-plugins.json"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/gitsync-portal/main.js"), true);
 assert.equal(service.isSelfCoreFile(".obsidian/plugins/dataview/main.js"), false);
+assert.equal(service.isIgnored("note.conflict-macos-20260813T000000Z.md"), true);
+assert.equal(service.isIgnored("folder/note.conflict-ios-20260813T000000Z.md"), true);
+const hardExcludeService = new GitHubSyncService({ ...fakePlugin, settings: { syncIgnorePatterns: "" } }, () => {});
+assert.equal(hardExcludeService.isIgnored(".obsidian/plugins/gitsync-portal/local-sync-state.json"), true);
 
 const retryPlugin = {
   settings: { syncBranch: "main", syncRepository: "owner/repo", lastSyncedCommit: "", syncDeviceName: "test" },
@@ -285,7 +317,7 @@ pluginSettingsService.pushEntriesWithRemoteRetry = async (_token, _branch, _remo
 };
 const pluginSettingsResult = await pluginSettingsService.syncAttempt("token", "main");
 assert.equal(pluginSettingsPushes, 1);
-assert.equal(pluginSettingsResult.pushed, 2);
+assert.equal(pluginSettingsResult.pushed, 1);
 assert.equal(pluginSettingsResult.commitSha, "plugin-settings-upload");
 
 const viewerStateService = new GitHubSyncService(pluginSettingsPlugin, () => {});
@@ -314,7 +346,66 @@ viewerStateService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote,
 };
 const viewerStateResult = await viewerStateService.syncAttempt("token", "main");
 assert.equal(viewerStatePushes, 1);
-assert.equal(viewerStateResult.pushed, 2);
+assert.equal(viewerStateResult.pushed, 1);
 assert.equal(viewerStateResult.commitSha, "state-upload");
+
+const oneWayPlugin = {
+  settings: { ...retryPlugin.settings, lastSyncedCommit: "base", syncMaxFileSizeMb: 50, syncIgnorePatterns: "" },
+  getGitHubToken: () => "token",
+  t: retryPlugin.t,
+  manifest: { id: "gitsync-portal" },
+  app: { vault: {
+    configDir: ".obsidian",
+    getFileByPath: () => null,
+    adapter: { exists: async (path) => path === "note.md" },
+  } },
+};
+
+const pullService = new GitHubSyncService(oneWayPlugin, () => {});
+pullService.getHead = async () => remoteSnapshot("remote", [remoteFile("note.md", "remote")]);
+pullService.tryGetSnapshot = async () => remoteSnapshot("base", [remoteFile("note.md", "base")]);
+pullService.getLocalSnapshot = async () => map([["note.md", localFile("note.md", "local")]]);
+let pullConflictCopies = 0;
+let pulledMainFiles = 0;
+pullService.createConflictCopy = async (file) => {
+  pullConflictCopies++;
+  return localFile(`${file.path}.conflict-test`, file.sha);
+};
+pullService.writeRemoteFile = async () => { pulledMainFiles++; };
+pullService.ensureSelfEnabled = async () => null;
+pullService.pushEntriesWithRemoteRetry = async () => { throw new Error("pull-only must not push"); };
+const pullResult = await pullService.syncAttempt("token", "main", "pull-only");
+assert.equal(pullConflictCopies, 1);
+assert.equal(pulledMainFiles, 1);
+assert.equal(pullResult.mode, "pull-only");
+assert.equal(pullResult.pushed, 0);
+
+const pushService = new GitHubSyncService(oneWayPlugin, () => {});
+pushService.getHead = async () => remoteSnapshot("remote", [remoteFile("note.md", "remote")]);
+pushService.tryGetSnapshot = async () => remoteSnapshot("base", [remoteFile("note.md", "base")]);
+pushService.getLocalSnapshot = async () => map([["note.md", localFile("note.md", "local")]]);
+pushService.ensureSelfEnabled = async () => null;
+pushService.readLocalBinary = async () => buffer("local");
+pushService.api = async (_token, method, endpoint) => {
+  if (method === "POST" && endpoint === "/git/blobs") return { sha: "local-blob" };
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+let pushEntries = [];
+let pushConflictCopies = 0;
+pushService.createRemoteConflictCopy = async (_token, remote) => {
+  pushConflictCopies++;
+  return localFile(`${remote.path}.conflict-test`, remote.sha);
+};
+pushService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
+  pushEntries = entries;
+  return "pushed";
+};
+pushService.writeRemoteFile = async () => { throw new Error("push-only must not pull"); };
+const pushResult = await pushService.syncAttempt("token", "main", "push-only");
+assert.equal(pushResult.mode, "push-only");
+assert.equal(pushResult.pulled, 0);
+assert.ok(pushEntries.some((entry) => entry.path === "note.md" && entry.sha === "local-blob"));
+assert.equal(pushConflictCopies, 1);
+assert.equal(pushEntries.some((entry) => entry.path.includes(".conflict-")), false);
 
 console.log("Git sync core tests passed.");
