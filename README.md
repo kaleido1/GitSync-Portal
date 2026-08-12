@@ -2,7 +2,7 @@
 
 GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.1.1`
+Current version: `2.1.2`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
@@ -45,7 +45,7 @@ Change the language under **Obsidian → Settings → GitSync Portal → Languag
 
 ## Installation
 
-Download [gitsync-portal-2.1.1.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.1/gitsync-portal-2.1.1.zip) and extract it into your vault's plugin directory:
+Download [gitsync-portal-2.1.2.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.2/gitsync-portal-2.1.2.zip) and extract it into your vault's plugin directory:
 
 ```text
 <Vault>/.obsidian/plugins/
@@ -87,6 +87,8 @@ On first load, GitSync Portal reads legacy settings, shared favorites/history, l
 The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Portal compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
 
 The dashboard keeps two-way sync as the primary action and places **Pull only** and **Push only** underneath as secondary actions. Pull-only applies remote changes without uploading and preserves displaced local content. Push-only uploads local changes without applying remote changes and preserves displaced remote content. Generated conflict copies are excluded from later synchronization passes so they cannot create a conflict loop.
+
+Push-only always publishes locally installed community plugin files when they differ from the remote repository. This makes desktop plugin installs and upgrades available to mobile devices on their next pull-only sync. Explicitly ignored runtime and device-local files remain excluded.
 
 If the remote branch changes during the final commit, GitSync Portal reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
 

@@ -357,7 +357,7 @@ const oneWayPlugin = {
   app: { vault: {
     configDir: ".obsidian",
     getFileByPath: () => null,
-    adapter: { exists: async (path) => path === "note.md" },
+    adapter: { exists: async (path) => path === "note.md" || path === ".obsidian/plugins/gitsync-portal/main.js" || path === ".obsidian/plugins/example-plugin/main.js" },
   } },
 };
 
@@ -381,9 +381,11 @@ assert.equal(pullResult.mode, "pull-only");
 assert.equal(pullResult.pushed, 0);
 
 const pushService = new GitHubSyncService(oneWayPlugin, () => {});
-pushService.getHead = async () => remoteSnapshot("remote", [remoteFile("note.md", "remote")]);
-pushService.tryGetSnapshot = async () => remoteSnapshot("base", [remoteFile("note.md", "base")]);
-pushService.getLocalSnapshot = async () => map([["note.md", localFile("note.md", "local")]]);
+const selfMainPath = ".obsidian/plugins/gitsync-portal/main.js";
+const otherPluginPath = ".obsidian/plugins/example-plugin/main.js";
+pushService.getHead = async () => remoteSnapshot("remote", [remoteFile("note.md", "remote"), remoteFile(selfMainPath, "old-plugin"), remoteFile(otherPluginPath, "old-other-plugin")]);
+pushService.tryGetSnapshot = async () => remoteSnapshot("base", [remoteFile("note.md", "base"), remoteFile(selfMainPath, "new-plugin"), remoteFile(otherPluginPath, "new-other-plugin")]);
+pushService.getLocalSnapshot = async () => map([["note.md", localFile("note.md", "local")], [selfMainPath, localFile(selfMainPath, "new-plugin")], [otherPluginPath, localFile(otherPluginPath, "new-other-plugin")]]);
 pushService.ensureSelfEnabled = async () => null;
 pushService.readLocalBinary = async () => buffer("local");
 pushService.api = async (_token, method, endpoint) => {
@@ -407,5 +409,7 @@ assert.equal(pushResult.pulled, 0);
 assert.ok(pushEntries.some((entry) => entry.path === "note.md" && entry.sha === "local-blob"));
 assert.equal(pushConflictCopies, 1);
 assert.equal(pushEntries.some((entry) => entry.path.includes(".conflict-")), false);
+assert.ok(pushEntries.some((entry) => entry.path === selfMainPath), "push-only must publish a locally installed plugin update even when the baseline matches local");
+assert.ok(pushEntries.some((entry) => entry.path === otherPluginPath), "push-only must publish updates for every installed community plugin");
 
 console.log("Git sync core tests passed.");
