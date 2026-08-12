@@ -4,7 +4,7 @@ The same plugin package supports Android, iOS, Windows, macOS, and Linux.
 
 ## Download
 
-Download [gitsync-portal-2.1.3.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.3/gitsync-portal-2.1.3.zip). The archive contains:
+Download [gitsync-portal-2.1.4.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.4/gitsync-portal-2.1.4.zip). The archive contains:
 
 ```text
 gitsync-portal/
@@ -22,7 +22,7 @@ On Windows, enable **Hidden items** in File Explorer. On macOS, press `Command +
 On Linux:
 
 ```bash
-unzip gitsync-portal-2.1.3.zip -d "/path/to/Vault/.obsidian/plugins/"
+unzip gitsync-portal-2.1.4.zip -d "/path/to/Vault/.obsidian/plugins/"
 ```
 
 ## Android

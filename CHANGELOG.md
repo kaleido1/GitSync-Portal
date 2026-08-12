@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.4] - 2026-08-13
+
+### Fixed
+
+- Restored phone-specific Dashboard typography to explicit compact sizes instead of mobile theme-dependent UI variables.
+- Removed the 2.1.x `50px` minimum file-row height on phones and restored the 2.0.1 search-field height and denser sync controls.
+
 ## [2.1.3] - 2026-08-13
 
 ### Changed
