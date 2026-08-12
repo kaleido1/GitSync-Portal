@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.1.5] - 2026-08-13
+
+### Changed
+
+- Made Dashboard typography inherit Obsidian's configured interface font size on desktop and mobile, with relative title and secondary-text sizing.
+
+### Fixed
+
+- Preserved the Portal's last user scroll position across iOS sidebar swipe-in, view remount, and asynchronous layout passes instead of resetting to the top.
+
 ## [2.1.4] - 2026-08-13
 
 ### Fixed

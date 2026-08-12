@@ -25,7 +25,7 @@
   --ov-surface-strong: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
   --ov-list-surface: color-mix(in srgb, var(--text-normal) 5.5%, var(--background-primary));
   --ov-list-hover: color-mix(in srgb, var(--text-normal) 9%, var(--background-primary));
-  font-size: var(--font-ui-small);
+  font-size: inherit;
   padding: 10px 10px 28px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -821,10 +821,10 @@
   }
 }
 
-/* Keep the phone sidebar as compact as the 2.0.1 dashboard. Explicit pixel
-   sizes avoid larger mobile theme values for --font-ui-small. */
+/* Match the phone sidebar typography to Obsidian's configured interface font
+   size while retaining the compact 2.0.1 control density. */
 .is-mobile .ov-dashboard {
-  font-size: 12px;
+  font-size: inherit;
 }
 
 .is-mobile .ov-dashboard-header h2,
@@ -834,7 +834,7 @@
 .is-mobile .ov-active-note-labels strong,
 .is-mobile .ov-sync-card-header strong,
 .is-mobile .ov-home-card h3 {
-  font-size: 13px;
+  font-size: 1em;
 }
 
 .is-mobile .ov-dashboard-header small,
@@ -844,7 +844,7 @@
 .is-mobile .ov-dashboard button,
 .is-mobile .ov-dashboard input,
 .is-mobile .ov-dashboard select {
-  font-size: 11px;
+  font-size: .85em;
 }
 
 .is-mobile .ov-file-row,

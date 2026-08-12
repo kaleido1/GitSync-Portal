@@ -7,6 +7,7 @@ export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
 const HISTORY_BATCH_SIZE = 40;
+let savedDashboardScrollTop = 0;
 
 export class GitSyncPortalDashboardView extends ItemView {
   private activeTab: DashboardTab = "home";
@@ -38,6 +39,9 @@ export class GitSyncPortalDashboardView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.contentEl.addClass("ov-dashboard");
+    this.registerDomEvent(this.contentEl, "scroll", () => {
+      savedDashboardScrollTop = this.contentEl.scrollTop;
+    }, { passive: true });
     await this.render();
   }
 
@@ -49,7 +53,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   async render(): Promise<void> {
     const root = this.contentEl;
     const searchFocus = this.captureSearchFocus(root);
-    const scrollTop = root.scrollTop;
+    const scrollTop = root.scrollTop || savedDashboardScrollTop;
     root.empty();
     root.addClass("ov-dashboard");
 
@@ -72,7 +76,18 @@ export class GitSyncPortalDashboardView extends ItemView {
     if (this.activeTab === "files") await this.renderFiles(root, searchFocus);
     if (this.activeTab === "favorites") this.renderTrackedItems(root, this.plugin.t("tabFavorites"), this.plugin.settings.favorites, this.plugin.t("noFavorites"), true);
     if (this.activeTab === "history") this.renderHistory(root);
-    root.scrollTop = scrollTop;
+    this.restoreScrollTop(scrollTop);
+  }
+
+  private restoreScrollTop(scrollTop: number): void {
+    savedDashboardScrollTop = scrollTop;
+    this.contentEl.scrollTop = scrollTop;
+    window.requestAnimationFrame(() => {
+      this.contentEl.scrollTop = savedDashboardScrollTop;
+      window.requestAnimationFrame(() => {
+        this.contentEl.scrollTop = savedDashboardScrollTop;
+      });
+    });
   }
 
   private renderTabs(root: HTMLElement): void {
