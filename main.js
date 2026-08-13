@@ -3634,6 +3634,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     const name = file instanceof import_obsidian5.TFile ? file.basename : file.name || this.t("rootName");
     this.settings.favorites = isFavorite ? this.settings.favorites.filter((path) => path !== file.path) : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
+    this.scheduleSyncOnSave();
     new import_obsidian5.Notice(this.t(isFavorite ? "removedFavorite" : "addedFavorite", { name }));
   }
   async setHomeNote(file) {
@@ -3645,10 +3646,12 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.settings.history = [file.path, ...this.settings.history.filter((path) => path !== file.path)].slice(0, this.settings.maxHistory);
     await this.savePluginData();
     await this.saveSyncedViewerState();
+    this.scheduleSyncOnSave();
   }
   async clearHistory() {
     this.settings.history = [];
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
   getMarkdownFile(path) {
     const file = this.app.vault.getAbstractFileByPath(path);
@@ -3715,11 +3718,15 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     });
   }
   scheduleSyncOnSave() {
-    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
+    if (!this.settings.syncOnSave || !this.getGitHubToken()) return;
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
-      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
+      if (!this.settings.syncOnSave || !this.getGitHubToken()) return;
+      if (this.syncInFlight !== null || this.githubSync.isRunning) {
+        this.scheduleSyncOnSave();
+        return;
+      }
       void this.syncNow(false);
     }, 3e4);
   }
@@ -3741,6 +3748,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.settings.history = this.settings.history.filter(keep);
     if (this.settings.homeNote === path) this.settings.homeNote = "";
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
   async renameTrackedPath(oldPath, newPath) {
     const replace = (path) => {
@@ -3752,6 +3760,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.settings.history = this.settings.history.map(replace);
     if (this.settings.homeNote === oldPath) this.settings.homeNote = newPath;
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
   async loadSyncedViewerState() {
     const path = syncedViewerStatePath(this.app.vault.configDir);

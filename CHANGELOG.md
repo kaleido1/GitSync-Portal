@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.8] - 2026-08-13
+
+### Fixed
+
+- Made favorite and reading-history synchronization use a trailing 30-second debounce, so the timer starts after the latest change rather than the first change in a burst.
+- Preserved pending save-triggered synchronization when another sync is still running at the timer deadline.
+
 ## [2.1.7] - 2026-08-13
 
 ### Fixed

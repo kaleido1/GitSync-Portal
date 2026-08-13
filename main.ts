@@ -430,6 +430,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       ? this.settings.favorites.filter((path) => path !== file.path)
       : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
+    this.scheduleSyncOnSave();
     new Notice(this.t(isFavorite ? "removedFavorite" : "addedFavorite", { name }));
   }
 
@@ -444,11 +445,13 @@ export default class GitSyncPortalPlugin extends Plugin {
       .slice(0, this.settings.maxHistory);
     await this.savePluginData();
     await this.saveSyncedViewerState();
+    this.scheduleSyncOnSave();
   }
 
   async clearHistory(): Promise<void> {
     this.settings.history = [];
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
 
   getMarkdownFile(path: string): TFile | null {
@@ -527,11 +530,16 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   private scheduleSyncOnSave(): void {
-    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
+    if (!this.settings.syncOnSave || !this.getGitHubToken()) return;
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
+    // Trailing debounce: every new tracked-state change restarts the 30-second window.
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
-      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
+      if (!this.settings.syncOnSave || !this.getGitHubToken()) return;
+      if (this.syncInFlight !== null || this.githubSync.isRunning) {
+        this.scheduleSyncOnSave();
+        return;
+      }
       void this.syncNow(false);
     }, 30_000);
   }
@@ -555,6 +563,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.settings.history = this.settings.history.filter(keep);
     if (this.settings.homeNote === path) this.settings.homeNote = "";
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
 
   private async renameTrackedPath(oldPath: string, newPath: string): Promise<void> {
@@ -567,6 +576,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.settings.history = this.settings.history.map(replace);
     if (this.settings.homeNote === oldPath) this.settings.homeNote = newPath;
     await this.saveSettings();
+    this.scheduleSyncOnSave();
   }
 
   private async loadSyncedViewerState(): Promise<ViewerSyncedState | null> {

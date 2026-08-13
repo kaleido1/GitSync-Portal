@@ -2,7 +2,7 @@
 
 GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.1.7`
+Current version: `2.1.8`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
@@ -17,6 +17,7 @@ Current version: `2.1.7`
 - Newer-version conflict resolution with preserved `.conflict-…` copies
 - Automatic retries when the remote branch changes during a sync
 - A synchronization mutex that suppresses duplicate manual and automatic attempts while a sync is in progress
+- Trailing 30-second save-triggered synchronization after the latest favorite or history change
 - Startup, save-triggered, manual, and periodic sync modes
 - Fine-grained GitHub token storage through Obsidian `SecretStorage`
 - Vault dashboard with folders, files, search, favorites, history, and an outline
@@ -46,7 +47,7 @@ Change the language under **Obsidian → Settings → GitSync Portal → Languag
 
 ## Installation
 
-Download [gitsync-portal-2.1.7.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.7/gitsync-portal-2.1.7.zip) and extract it into your vault's plugin directory:
+Download [gitsync-portal-2.1.8.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.8/gitsync-portal-2.1.8.zip) and extract it into your vault's plugin directory:
 
 ```text
 <Vault>/.obsidian/plugins/
@@ -94,6 +95,8 @@ Push-only always publishes locally installed community plugin files when they di
 If the remote branch changes during the final commit, GitSync Portal reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
 
 Manual, startup, save-triggered, and periodic sync requests share one lock. A request received while another sync is still saving settings, communicating with GitHub, or applying changes is ignored instead of starting a competing attempt. The lock is released after both successful and failed syncs.
+
+When **Sync on save** is enabled, changes to favorites or reading history restart a trailing 30-second timer. Synchronization starts only after 30 seconds without another tracked-state change; if a sync is still running at that point, the pending synchronization waits until the lock is available.
 
 ## What is synchronized
 
