@@ -161,6 +161,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   private syncOnSaveTimer: number | null = null;
   private periodicSyncTimer: number | null = null;
   private periodicSyncKey = "";
+  private syncInFlight: Promise<void> | null = null;
   syncStatus: GitHubSyncStatus = { stage: "idle", message: "" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
     this.syncStatus = status;
@@ -348,10 +349,16 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   async syncNow(showNotice = true, mode: GitHubSyncMode = "two-way"): Promise<void> {
-    if (this.githubSync.isRunning) {
+    if (this.syncInFlight !== null || this.githubSync.isRunning) {
       if (showNotice) new Notice(this.t("syncAlreadyRunning"));
       return;
     }
+
+    // Claim the lock before the first await. This covers the period where
+    // saveSettings() runs, before GitHubSyncService can set its own guard.
+    let releaseLock!: () => void;
+    const lock = new Promise<void>((resolve) => { releaseLock = resolve; });
+    this.syncInFlight = lock;
     try {
       await this.saveSettings();
       const result = await this.githubSync.sync(mode);
@@ -373,6 +380,9 @@ export default class GitSyncPortalPlugin extends Plugin {
       if (showNotice) new Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
       if (showNotice) new Notice(error instanceof Error ? error.message : String(error), 8000);
+    } finally {
+      releaseLock();
+      if (this.syncInFlight === lock) this.syncInFlight = null;
     }
   }
 
@@ -517,11 +527,11 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   private scheduleSyncOnSave(): void {
-    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
+    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
-      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
+      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
       void this.syncNow(false);
     }, 30_000);
   }
@@ -535,7 +545,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.periodicSyncTimer = null;
     if (!this.settings.syncPeriodically) return;
     this.periodicSyncTimer = window.setInterval(() => {
-      if (this.getGitHubToken() && !this.githubSync.isRunning) void this.syncNow(false);
+      if (this.getGitHubToken() && this.syncInFlight === null && !this.githubSync.isRunning) void this.syncNow(false);
     }, minutes * 60_000);
   }
 

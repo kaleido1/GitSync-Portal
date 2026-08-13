@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.7] - 2026-08-13
+
+### Fixed
+
+- Added a synchronization mutex covering the complete sync workflow, including the settings-save phase, so manual and automatic triggers cannot start duplicate attempts.
+- Ensured the synchronization lock is released after both successful and failed runs.
+
 ## [2.1.5] - 2026-08-13
 
 ### Changed

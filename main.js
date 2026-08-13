@@ -3394,6 +3394,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.syncOnSaveTimer = null;
     this.periodicSyncTimer = null;
     this.periodicSyncKey = "";
+    this.syncInFlight = null;
     this.syncStatus = { stage: "idle", message: "" };
     this.githubSync = new GitHubSyncService(this, (status) => {
       this.syncStatus = status;
@@ -3564,10 +3565,15 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     return `${result.repository} \xB7 ${result.branch} \xB7 ${result.commitSha.slice(0, 7)}`;
   }
   async syncNow(showNotice = true, mode = "two-way") {
-    if (this.githubSync.isRunning) {
+    if (this.syncInFlight !== null || this.githubSync.isRunning) {
       if (showNotice) new import_obsidian5.Notice(this.t("syncAlreadyRunning"));
       return;
     }
+    let releaseLock;
+    const lock = new Promise((resolve) => {
+      releaseLock = resolve;
+    });
+    this.syncInFlight = lock;
     try {
       await this.saveSettings();
       const result = await this.githubSync.sync(mode);
@@ -3587,6 +3593,9 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       if (showNotice) new import_obsidian5.Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
       if (showNotice) new import_obsidian5.Notice(error instanceof Error ? error.message : String(error), 8e3);
+    } finally {
+      releaseLock();
+      if (this.syncInFlight === lock) this.syncInFlight = null;
     }
   }
   applyReaderSettings() {
@@ -3706,11 +3715,11 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     });
   }
   scheduleSyncOnSave() {
-    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
+    if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     this.syncOnSaveTimer = window.setTimeout(() => {
       this.syncOnSaveTimer = null;
-      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.githubSync.isRunning) return;
+      if (!this.settings.syncOnSave || !this.getGitHubToken() || this.syncInFlight !== null || this.githubSync.isRunning) return;
       void this.syncNow(false);
     }, 3e4);
   }
@@ -3723,7 +3732,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.periodicSyncTimer = null;
     if (!this.settings.syncPeriodically) return;
     this.periodicSyncTimer = window.setInterval(() => {
-      if (this.getGitHubToken() && !this.githubSync.isRunning) void this.syncNow(false);
+      if (this.getGitHubToken() && this.syncInFlight === null && !this.githubSync.isRunning) void this.syncNow(false);
     }, minutes * 6e4);
   }
   async removeMissingPath(path) {
