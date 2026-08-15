@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.9] - 2026-08-15
+
+### Fixed
+
+- Supported first synchronization into a completely empty GitHub repository by creating its root commit and initial branch reference.
+- Stopped treating GitHub's `Git Repository is empty` response as a remote-change conflict and automatic retry loop.
+
 ## [2.1.8] - 2026-08-13
 
 ### Fixed

@@ -1380,18 +1380,25 @@ var GitHubSyncService = class {
       }
       try {
         const tree = await this.api(token, "POST", "/git/trees", {
-          base_tree: remote.treeSha,
+          ...remote.treeSha ? { base_tree: remote.treeSha } : {},
           tree: entries
         });
         const commit = await this.api(token, "POST", "/git/commits", {
           message: this.commitMessage(),
           tree: tree.sha,
-          parents: [remote.commitSha]
+          ...remote.commitSha ? { parents: [remote.commitSha] } : {}
         });
-        await this.api(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
-          sha: commit.sha,
-          force: false
-        });
+        if (remote.commitSha) {
+          await this.api(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
+            sha: commit.sha,
+            force: false
+          });
+        } else {
+          await this.api(token, "POST", "/git/refs", {
+            ref: `refs/heads/${branch}`,
+            sha: commit.sha
+          });
+        }
         return commit.sha;
       } catch (error) {
         if (isRemoteChangedDuringSync(error) && attempt < MAX_REF_UPDATE_ATTEMPTS) {
@@ -1418,8 +1425,13 @@ var GitHubSyncService = class {
     return this.api(token, "GET", "");
   }
   async getHead(token, branch) {
-    const reference = await this.api(token, "GET", `/git/ref/heads/${encodeURIComponent(branch)}`);
-    return this.getSnapshot(token, reference.object.sha);
+    try {
+      const reference = await this.api(token, "GET", `/git/ref/heads/${encodeURIComponent(branch)}`);
+      return this.getSnapshot(token, reference.object.sha);
+    } catch (error) {
+      if (isEmptyRepositoryError(error)) return { commitSha: "", treeSha: "", files: /* @__PURE__ */ new Map() };
+      throw error;
+    }
   }
   async tryGetSnapshot(token, commitSha) {
     if (!/^[0-9a-f]{40}$/i.test(commitSha)) return null;
@@ -1629,6 +1641,7 @@ var GitHubSyncService = class {
     return `Vault sync from ${device} at ${(/* @__PURE__ */ new Date()).toISOString()}`;
   }
   async api(token, method, endpoint, body) {
+    var _a;
     const { owner, repository } = parseRepository(this.plugin.settings.syncRepository, this.plugin.t("repositoryFormat"));
     const url = `${API_ROOT}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${endpoint}`;
     const response = await (0, import_obsidian4.requestUrl)({
@@ -1645,16 +1658,21 @@ var GitHubSyncService = class {
       throw: false
     });
     if (response.status >= 200 && response.status < 300) return response.json;
+    let apiMessage = "";
     let detail = "";
     try {
       const parsed = response.json;
-      detail = (parsed == null ? void 0 : parsed.message) ? `\uFF1A${parsed.message}` : "";
+      apiMessage = (_a = parsed == null ? void 0 : parsed.message) != null ? _a : "";
+      detail = apiMessage ? `\uFF1A${apiMessage}` : "";
     } catch (e) {
       detail = response.text ? `\uFF1A${response.text.slice(0, 200)}` : "";
     }
     if (response.status === 401) throw new Error(this.plugin.t("tokenInvalid"));
     if (response.status === 403) throw new Error(this.plugin.t("tokenForbidden"));
     if (response.status === 404) throw new Error(this.plugin.t("repositoryNotFound"));
+    if ((response.status === 409 || response.status === 422) && /git repository is empty/i.test(apiMessage)) {
+      throw new EmptyRepositoryError();
+    }
     if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(this.plugin.t("remoteChanged", { detail }));
     throw new Error(this.plugin.t("apiFailed", { status: response.status, detail }));
   }
@@ -1782,6 +1800,12 @@ var RemoteChangedDuringSyncError = class extends Error {
     this.name = "RemoteChangedDuringSyncError";
   }
 };
+var EmptyRepositoryError = class extends Error {
+  constructor() {
+    super("Git Repository is empty");
+    this.name = "EmptyRepositoryError";
+  }
+};
 function sleep(milliseconds) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 }
@@ -1799,6 +1823,9 @@ async function mapWithConcurrency(items, limit, mapper) {
 }
 function isRemoteChangedDuringSync(error) {
   return error instanceof RemoteChangedDuringSyncError || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
+}
+function isEmptyRepositoryError(error) {
+  return error instanceof EmptyRepositoryError || error instanceof Error && error.name === "EmptyRepositoryError";
 }
 
 // src/i18n.ts

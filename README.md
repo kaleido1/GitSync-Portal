@@ -2,7 +2,7 @@
 
 GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.1.8`
+Current version: `2.1.9`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
@@ -47,7 +47,7 @@ Change the language under **Obsidian → Settings → GitSync Portal → Languag
 
 ## Installation
 
-Download [gitsync-portal-2.1.8.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.8/gitsync-portal-2.1.8.zip) and extract it into your vault's plugin directory:
+Download [gitsync-portal-2.1.9.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.9/gitsync-portal-2.1.9.zip) and extract it into your vault's plugin directory:
 
 ```text
 <Vault>/.obsidian/plugins/
@@ -85,6 +85,8 @@ On first load, GitSync Portal reads legacy settings, shared favorites/history, l
 4. Enter the token, `owner/repository`, and branch.
 5. Select **Test connection**, then run the first two-way sync manually.
 6. Verify the result before enabling startup, save-triggered, or periodic sync.
+
+An entirely new GitHub repository is supported: the first two-way sync creates its initial commit and configured branch from the local vault. A local vault restored without files should use **Pull only** when the remote already contains commits.
 
 The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Portal compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
 

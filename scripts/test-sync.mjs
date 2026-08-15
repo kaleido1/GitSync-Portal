@@ -251,7 +251,7 @@ assert.ok(retryStatuses.some((message) => message.includes("statusRemoteRetry"))
 
 const remoteSnapshot = (commitSha, files = []) => ({
   commitSha,
-  treeSha: `${commitSha}-tree`,
+  treeSha: commitSha ? `${commitSha}-tree` : "",
   files: new Map(files.map((file) => [file.path, file])),
 });
 const rebaseService = new GitHubSyncService(retryPlugin, () => {});
@@ -283,6 +283,49 @@ const rebaseCommit = await rebaseService.pushEntriesWithRemoteRetry(
 );
 assert.equal(refPatchAttempts, 2);
 assert.deepEqual(baseTrees, ["planned-tree", "latest-tree"]);
+
+const emptyRemoteService = new GitHubSyncService(retryPlugin, () => {});
+let emptyTreeBody;
+let emptyCommitBody;
+let createdRefBody;
+emptyRemoteService.api = async (_token, method, endpoint, body) => {
+  if (endpoint === "/git/trees") {
+    emptyTreeBody = { method, ...body };
+    return { sha: "root-tree" };
+  }
+  if (endpoint === "/git/commits") {
+    emptyCommitBody = { method, ...body };
+    return { sha: "root-commit", tree: { sha: "root-tree" } };
+  }
+  if (endpoint === "/git/refs") {
+    createdRefBody = { method, ...body };
+    return { object: { sha: body.sha } };
+  }
+  throw new Error(`unexpected empty-repository api call: ${method} ${endpoint}`);
+};
+const rootCommit = await emptyRemoteService.pushEntriesWithRemoteRetry(
+  "token",
+  "main",
+  remoteSnapshot(""),
+  [{ path: "note.md", mode: "100644", type: "blob", sha: "local" }],
+);
+assert.equal(rootCommit, "root-commit");
+assert.equal(emptyTreeBody.base_tree, undefined);
+assert.deepEqual(emptyTreeBody.tree, [{ path: "note.md", mode: "100644", type: "blob", sha: "local" }]);
+assert.equal(emptyCommitBody.parents, undefined);
+assert.equal(createdRefBody.ref, "refs/heads/main");
+assert.equal(createdRefBody.sha, "root-commit");
+
+const emptyHeadService = new GitHubSyncService(retryPlugin, () => {});
+emptyHeadService.api = async () => {
+  const error = new Error("Git Repository is empty");
+  error.name = "EmptyRepositoryError";
+  throw error;
+};
+const emptyHead = await emptyHeadService.getHead("token", "main");
+assert.equal(emptyHead.commitSha, "");
+assert.equal(emptyHead.treeSha, "");
+assert.equal(emptyHead.files.size, 0);
 assert.equal(rebaseCommit, "latest-tree-new-commit");
 
 const pluginSettingsPlugin = {

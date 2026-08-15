@@ -1,6 +1,6 @@
 {
   "name": "gitsync-portal",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "private": true,
   "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "Kai Liu",

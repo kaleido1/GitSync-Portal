@@ -455,18 +455,25 @@ export class GitHubSyncService {
       }
       try {
         const tree = await this.api<{ sha: string }>(token, "POST", "/git/trees", {
-          base_tree: remote.treeSha,
+          ...(remote.treeSha ? { base_tree: remote.treeSha } : {}),
           tree: entries,
         });
         const commit = await this.api<GitCommit>(token, "POST", "/git/commits", {
           message: this.commitMessage(),
           tree: tree.sha,
-          parents: [remote.commitSha],
+          ...(remote.commitSha ? { parents: [remote.commitSha] } : {}),
         });
-        await this.api<GitReference>(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
-          sha: commit.sha,
-          force: false,
-        });
+        if (remote.commitSha) {
+          await this.api<GitReference>(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
+            sha: commit.sha,
+            force: false,
+          });
+        } else {
+          await this.api<GitReference>(token, "POST", "/git/refs", {
+            ref: `refs/heads/${branch}`,
+            sha: commit.sha,
+          });
+        }
         return commit.sha;
       } catch (error) {
         if (isRemoteChangedDuringSync(error) && attempt < MAX_REF_UPDATE_ATTEMPTS) {
@@ -494,8 +501,15 @@ export class GitHubSyncService {
   }
 
   private async getHead(token: string, branch: string): Promise<RemoteSnapshot> {
-    const reference = await this.api<GitReference>(token, "GET", `/git/ref/heads/${encodeURIComponent(branch)}`);
-    return this.getSnapshot(token, reference.object.sha);
+    try {
+      const reference = await this.api<GitReference>(token, "GET", `/git/ref/heads/${encodeURIComponent(branch)}`);
+      return this.getSnapshot(token, reference.object.sha);
+    } catch (error) {
+      // An uninitialized GitHub repository has no branch ref yet. Treat it as
+      // an empty snapshot so the first local sync can create its root commit.
+      if (isEmptyRepositoryError(error)) return { commitSha: "", treeSha: "", files: new Map() };
+      throw error;
+    }
   }
 
   private async tryGetSnapshot(token: string, commitSha: string): Promise<RemoteSnapshot | null> {
@@ -741,16 +755,21 @@ export class GitHubSyncService {
       throw: false,
     });
     if (response.status >= 200 && response.status < 300) return response.json as T;
+    let apiMessage = "";
     let detail = "";
     try {
       const parsed = response.json as { message?: string };
-      detail = parsed?.message ? `：${parsed.message}` : "";
+      apiMessage = parsed?.message ?? "";
+      detail = apiMessage ? `：${apiMessage}` : "";
     } catch {
       detail = response.text ? `：${response.text.slice(0, 200)}` : "";
     }
     if (response.status === 401) throw new Error(this.plugin.t("tokenInvalid"));
     if (response.status === 403) throw new Error(this.plugin.t("tokenForbidden"));
     if (response.status === 404) throw new Error(this.plugin.t("repositoryNotFound"));
+    if ((response.status === 409 || response.status === 422) && /git repository is empty/i.test(apiMessage)) {
+      throw new EmptyRepositoryError();
+    }
     if (response.status === 409 || response.status === 422) throw new RemoteChangedDuringSyncError(this.plugin.t("remoteChanged", { detail }));
     throw new Error(this.plugin.t("apiFailed", { status: response.status, detail }));
   }
@@ -919,6 +938,13 @@ class RemoteChangedDuringSyncError extends Error {
   }
 }
 
+class EmptyRepositoryError extends Error {
+  constructor() {
+    super("Git Repository is empty");
+    this.name = "EmptyRepositoryError";
+  }
+}
+
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 }
@@ -939,4 +965,9 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 function isRemoteChangedDuringSync(error: unknown): error is RemoteChangedDuringSyncError {
   return error instanceof RemoteChangedDuringSyncError
     || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
+}
+
+function isEmptyRepositoryError(error: unknown): error is EmptyRepositoryError {
+  return error instanceof EmptyRepositoryError
+    || error instanceof Error && error.name === "EmptyRepositoryError";
 }
