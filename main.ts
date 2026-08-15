@@ -236,7 +236,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     let migrated = legacyData !== null
       || loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
-    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).includes(this.settings.syncIgnorePatterns)) {
+    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).indexOf(this.settings.syncIgnorePatterns) !== -1) {
       this.settings.syncIgnorePatterns = defaultIgnorePatterns;
       migrated = true;
     }
@@ -274,8 +274,8 @@ export default class GitSyncPortalPlugin extends Plugin {
     return formatDateTime(this.settings.language, timestamp);
   }
 
-  getLanguageOptions(): typeof LANGUAGE_OPTIONS {
-    return LANGUAGE_OPTIONS;
+  getLanguageOptions(): Array<[string, string]> {
+    return Object.keys(LANGUAGE_OPTIONS).map((key) => [key, LANGUAGE_OPTIONS[key as LanguageSetting]]);
   }
 
   getCurrentDeviceName(): string {
@@ -379,7 +379,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   isFavorite(path: string): boolean {
-    return this.settings.favorites.includes(path);
+    return this.settings.favorites.indexOf(path) !== -1;
   }
 
   async toggleFavorite(file: TFile | TFolder): Promise<void> {
@@ -440,8 +440,8 @@ export default class GitSyncPortalPlugin extends Plugin {
         }
         this.searchCache.set(file.path, content);
       }
-      if (!terms.every((term) => path.includes(term) || content.includes(term))) return;
-      const score = terms.reduce((total, term) => total + (path.includes(term) ? 10 : 1), 0);
+      if (!terms.every((term) => path.indexOf(term) !== -1 || content.indexOf(term) !== -1)) return;
+      const score = terms.reduce((total, term) => total + (path.indexOf(term) !== -1 ? 10 : 1), 0);
       results.push({ file, score });
     }));
 
@@ -759,7 +759,7 @@ function normalizeTrackedPaths(paths: unknown): string[] {
 }
 
 async function ensureAdapterParentFolders(plugin: GitSyncPortalPlugin, path: string): Promise<void> {
-  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const parent = path.indexOf("/") !== -1 ? path.slice(0, path.lastIndexOf("/")) : "";
   if (!parent) return;
   let current = "";
   for (const segment of parent.split("/")) {

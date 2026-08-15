@@ -100,7 +100,7 @@ class QuizRenderChild extends MarkdownRenderChild {
   }
 
   private async resolveQuiz(): Promise<QuizDefinition> {
-    const parsed = parseYaml(this.source) as unknown;
+    const parsed: unknown = parseYaml(this.source);
     const direct = unwrapQuiz(parsed);
     if (direct?.questions?.length) return direct;
 
@@ -112,7 +112,7 @@ class QuizRenderChild extends MarkdownRenderChild {
       if (definition) return definition;
     }
     if (record?.source === "current") {
-      const first = definitions.values().next().value as QuizDefinition | undefined;
+      const first = [...definitions.values()][0];
       if (first) return first;
     }
     throw new Error(id ? this.plugin.t("quizNotFound", { id }) : this.plugin.t("quizSourceRequired"));
@@ -124,9 +124,11 @@ class QuizRenderChild extends MarkdownRenderChild {
     if (!(file instanceof TFile)) return definitions;
     const markdown = await this.plugin.app.vault.cachedRead(file);
     const pattern = /```quiz\s*\n([\s\S]*?)```/gi;
-    for (const match of markdown.matchAll(pattern)) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(markdown)) !== null) {
       try {
-        const quiz = unwrapQuiz(parseYaml(match[1] ?? ""));
+        const parsed: unknown = parseYaml(match[1] ?? "");
+        const quiz = unwrapQuiz(parsed);
         if (quiz?.id) definitions.set(quiz.id, quiz);
       } catch {
         // The visible definition block reports malformed YAML separately.
@@ -361,7 +363,7 @@ function formatCorrectAnswer(question: QuizQuestion): string {
   if (question.type === "matching") {
     const prompts = new Map((question.prompts ?? []).map((prompt) => [prompt.id, prompt.text]));
     const choices = new Map((question.choices ?? []).map((choice) => [choice.id, choice.text]));
-    return Object.entries(question.correctMatches ?? {})
+    return stringRecordEntries(question.correctMatches ?? {})
       .map(([prompt, choice]) => `${prompts.get(prompt) ?? prompt} → ${choices.get(choice) ?? choice}`)
       .join("；");
   }
@@ -398,7 +400,7 @@ function scoreQuestion(question: QuizQuestion, answer: Answer): Score {
     ratio = Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= Number(question.tolerance ?? 0) ? 1 : 0;
   } else if (question.type === "matching") {
     const actual = isStringRecord(answer) ? answer : {};
-    const expected = Object.entries(question.correctMatches ?? {});
+    const expected = stringRecordEntries(question.correctMatches ?? {});
     ratio = expected.length ? expected.filter(([key, value]) => actual[key] === value).length / expected.length : 0;
   } else if (question.type === "reorder") {
     ratio = JSON.stringify(asStringArray(answer)) === JSON.stringify(question.correctOrder ?? []) ? 1 : 0;
@@ -416,7 +418,7 @@ function validateQuiz(quiz: QuizDefinition, t: (key: TranslationKey, values?: Re
     if (!question?.id || !question.type || !question.prompt) throw new Error(t("quizQuestionMissing", { index: index + 1 }));
     if (ids.has(question.id)) throw new Error(t("quizDuplicateId", { id: question.id }));
     ids.add(question.id);
-    if (!["multiple-choice", "true-false", "multiple-select", "short-text", "numeric", "matching", "reorder"].includes(question.type)) {
+    if (["multiple-choice", "true-false", "multiple-select", "short-text", "numeric", "matching", "reorder"].indexOf(question.type) === -1) {
       throw new Error(t("quizUnsupportedType", { type: String(question.type) }));
     }
   });
@@ -437,6 +439,11 @@ function asStringArray(value: Answer): string[] {
   return Array.isArray(value) ? value.map(String) : [];
 }
 
+function stringRecordEntries(record: Record<string, string>): Array<[string, string]> {
+  return Object.keys(record).map((key) => [key, record[key]]);
+}
+
 function isStringRecord(value: Answer): value is Record<string, string> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).every((key) => typeof (value as Record<string, unknown>)[key] === "string");
 }

@@ -20,7 +20,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
             desc: t("languageDescription"),
             render: (setting) => {
               setting.addDropdown((dropdown) => {
-                Object.entries(this.plugin.getLanguageOptions()).forEach(([value, label]) => {
+                this.plugin.getLanguageOptions().forEach(([value, label]) => {
                   dropdown.addOption(value, label);
                 });
                 dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {

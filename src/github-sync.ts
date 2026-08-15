@@ -653,7 +653,7 @@ export class GitHubSyncService {
   }
 
   private async ensureParentFolders(path: string): Promise<void> {
-    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    const parent = path.indexOf("/") !== -1 ? path.slice(0, path.lastIndexOf("/")) : "";
     if (!parent) return;
     let current = "";
     for (const segment of parent.split("/")) {
@@ -683,7 +683,7 @@ export class GitHubSyncService {
       throw new Error(this.plugin.t("enabledListInvalid", { path }));
     }
     const updated = enabled.filter((id) => !LEGACY_PLUGIN_IDS.has(id));
-    if (!updated.includes(this.plugin.manifest.id)) updated.push(this.plugin.manifest.id);
+    if (updated.indexOf(this.plugin.manifest.id) === -1) updated.push(this.plugin.manifest.id);
     if (updated.length === enabled.length && updated.every((id, index) => id === enabled[index])) return null;
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}\n`);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -898,7 +898,7 @@ export async function gitBlobSha(data: ArrayBuffer): Promise<string> {
   payload.set(header, 0);
   payload.set(new Uint8Array(data), header.byteLength);
   const digest = await crypto.subtle.digest("SHA-1", payload);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(digest)].map((byte) => `${byte < 16 ? "0" : ""}${byte.toString(16)}`).join("");
 }
 
 export function parseRepository(value: string, invalidMessage = "Repository must use the owner/repository format."): { owner: string; repository: string } {
@@ -915,14 +915,14 @@ function matchesPattern(path: string, pattern: string): boolean {
   const normalized = normalizePath(pattern.replace(/^\//, ""));
   if (normalized.endsWith("/")) {
     const directory = normalized.slice(0, -1);
-    return normalized.includes("/")
+    return normalized.indexOf("/") !== -1
       ? path === directory || path.startsWith(normalized)
-      : path.split("/").includes(directory);
+      : path.split("/").indexOf(directory) !== -1;
   }
-  if (!normalized.includes("*") && !normalized.includes("?")) {
-    return normalized.includes("/")
+  if (normalized.indexOf("*") === -1 && normalized.indexOf("?") === -1) {
+    return normalized.indexOf("/") !== -1
       ? path === normalized || path.startsWith(`${normalized}/`)
-      : path.split("/").includes(normalized);
+      : path.split("/").indexOf(normalized) !== -1;
   }
   const doubleStarToken = "__GITSYNC_DOUBLE_STAR__";
   const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, doubleStarToken).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(new RegExp(doubleStarToken, "g"), ".*");

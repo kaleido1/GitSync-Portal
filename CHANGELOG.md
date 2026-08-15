@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.12] - 2026-08-16
+
+### Fixed
+
+- Removed all remaining TypeScript review warnings by using explicitly typed YAML boundaries and ES6-compatible collection helpers.
+- Declared ES2020 type definitions while retaining the ES6 runtime build target.
+
 ## [2.1.11] - 2026-08-16
 
 ### Added

@@ -1188,7 +1188,7 @@ const TRANSLATIONS: Record<ResolvedLanguage, Partial<Record<TranslationKey, stri
 export function resolveLanguage(setting: LanguageSetting, systemLanguage = systemLocale()): ResolvedLanguage {
   if (setting !== "auto") return setting;
   const locale = systemLanguage.replace(/_/g, "-").toLocaleLowerCase();
-  if (locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.startsWith("zh-mo") || locale.includes("hant")) return "zh-TW";
+  if (locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.startsWith("zh-mo") || locale.indexOf("hant") !== -1) return "zh-TW";
   if (locale.startsWith("zh")) return "zh";
   if (locale.startsWith("pt-br")) return "pt-BR";
   if (locale.startsWith("en-gb")) return "en-GB";

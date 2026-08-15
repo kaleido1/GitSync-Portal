@@ -101,7 +101,7 @@ const app = {
 const plugin = {
   settings,
   t: (key) => key,
-  getLanguageOptions: () => ({ auto: "System default", en: "English" }),
+  getLanguageOptions: () => [["auto", "System default"], ["en", "English"]],
   getGitHubToken: () => "",
   setGitHubToken: () => {},
   getCurrentDeviceName: () => "Mac",

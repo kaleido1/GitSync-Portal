@@ -329,7 +329,8 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
       this.scheduleSearchRender(results);
     });
     input.addEventListener("input", (event) => {
-      if (event.isComposing || this.isSearchComposing) return;
+      const isComposing = "isComposing" in event && event.isComposing === true;
+      if (isComposing || this.isSearchComposing) return;
       this.searchQuery = input.value;
       this.scheduleSearchRender(results);
     });
@@ -539,7 +540,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   openParentFolder() {
     if (!this.currentFolderPath) return;
-    const parent = this.currentFolderPath.includes("/") ? this.currentFolderPath.slice(0, this.currentFolderPath.lastIndexOf("/")) : "";
+    const parent = this.currentFolderPath.indexOf("/") !== -1 ? this.currentFolderPath.slice(0, this.currentFolderPath.lastIndexOf("/")) : "";
     this.openFolder(parent, true);
   }
   navigateHistory(direction) {
@@ -578,7 +579,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
             desc: t("languageDescription"),
             render: (setting) => {
               setting.addDropdown((dropdown) => {
-                Object.entries(this.plugin.getLanguageOptions()).forEach(([value, label]) => {
+                this.plugin.getLanguageOptions().forEach(([value, label]) => {
                   dropdown.addOption(value, label);
                 });
                 dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {
@@ -880,7 +881,7 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
       if (definition) return definition;
     }
     if ((record == null ? void 0 : record.source) === "current") {
-      const first = definitions.values().next().value;
+      const first = [...definitions.values()][0];
       if (first) return first;
     }
     throw new Error(id ? this.plugin.t("quizNotFound", { id }) : this.plugin.t("quizSourceRequired"));
@@ -892,9 +893,11 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     if (!(file instanceof import_obsidian3.TFile)) return definitions;
     const markdown = await this.plugin.app.vault.cachedRead(file);
     const pattern = /```quiz\s*\n([\s\S]*?)```/gi;
-    for (const match of markdown.matchAll(pattern)) {
+    let match;
+    while ((match = pattern.exec(markdown)) !== null) {
       try {
-        const quiz = unwrapQuiz((0, import_obsidian3.parseYaml)((_a = match[1]) != null ? _a : ""));
+        const parsed = (0, import_obsidian3.parseYaml)((_a = match[1]) != null ? _a : "");
+        const quiz = unwrapQuiz(parsed);
         if (quiz == null ? void 0 : quiz.id) definitions.set(quiz.id, quiz);
       } catch (e) {
       }
@@ -1120,7 +1123,7 @@ function formatCorrectAnswer(question) {
   if (question.type === "matching") {
     const prompts = new Map(((_f = question.prompts) != null ? _f : []).map((prompt) => [prompt.id, prompt.text]));
     const choices = new Map(((_g = question.choices) != null ? _g : []).map((choice) => [choice.id, choice.text]));
-    return Object.entries((_h = question.correctMatches) != null ? _h : {}).map(([prompt, choice]) => {
+    return stringRecordEntries((_h = question.correctMatches) != null ? _h : {}).map(([prompt, choice]) => {
       var _a2, _b2;
       return `${(_a2 = prompts.get(prompt)) != null ? _a2 : prompt} \u2192 ${(_b2 = choices.get(choice)) != null ? _b2 : choice}`;
     }).join("\uFF1B");
@@ -1161,7 +1164,7 @@ function scoreQuestion(question, answer) {
     ratio = Number.isFinite(actual) && Number.isFinite(expected) && Math.abs(actual - expected) <= Number((_c = question.tolerance) != null ? _c : 0) ? 1 : 0;
   } else if (question.type === "matching") {
     const actual = isStringRecord(answer) ? answer : {};
-    const expected = Object.entries((_d = question.correctMatches) != null ? _d : {});
+    const expected = stringRecordEntries((_d = question.correctMatches) != null ? _d : {});
     ratio = expected.length ? expected.filter(([key, value]) => actual[key] === value).length / expected.length : 0;
   } else if (question.type === "reorder") {
     ratio = JSON.stringify(asStringArray(answer)) === JSON.stringify((_e = question.correctOrder) != null ? _e : []) ? 1 : 0;
@@ -1178,7 +1181,7 @@ function validateQuiz(quiz, t) {
     if (!(question == null ? void 0 : question.id) || !question.type || !question.prompt) throw new Error(t("quizQuestionMissing", { index: index + 1 }));
     if (ids.has(question.id)) throw new Error(t("quizDuplicateId", { id: question.id }));
     ids.add(question.id);
-    if (!["multiple-choice", "true-false", "multiple-select", "short-text", "numeric", "matching", "reorder"].includes(question.type)) {
+    if (["multiple-choice", "true-false", "multiple-select", "short-text", "numeric", "matching", "reorder"].indexOf(question.type) === -1) {
       throw new Error(t("quizUnsupportedType", { type: String(question.type) }));
     }
   });
@@ -1195,8 +1198,12 @@ function asRecord(value) {
 function asStringArray(value) {
   return Array.isArray(value) ? value.map(String) : [];
 }
+function stringRecordEntries(record) {
+  return Object.keys(record).map((key) => [key, record[key]]);
+}
 function isStringRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).every((key) => typeof value[key] === "string");
 }
 
 // src/github-sync.ts
@@ -1673,7 +1680,7 @@ var GitHubSyncService = class {
     return candidate;
   }
   async ensureParentFolders(path) {
-    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    const parent = path.indexOf("/") !== -1 ? path.slice(0, path.lastIndexOf("/")) : "";
     if (!parent) return;
     let current = "";
     for (const segment of parent.split("/")) {
@@ -1702,7 +1709,7 @@ var GitHubSyncService = class {
       throw new Error(this.plugin.t("enabledListInvalid", { path }));
     }
     const updated = enabled.filter((id) => !LEGACY_PLUGIN_IDS.has(id));
-    if (!updated.includes(this.plugin.manifest.id)) updated.push(this.plugin.manifest.id);
+    if (updated.indexOf(this.plugin.manifest.id) === -1) updated.push(this.plugin.manifest.id);
     if (updated.length === enabled.length && updated.every((id, index) => id === enabled[index])) return null;
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}
 `);
@@ -1877,7 +1884,7 @@ async function gitBlobSha(data) {
   payload.set(header, 0);
   payload.set(new Uint8Array(data), header.byteLength);
   const digest = await crypto.subtle.digest("SHA-1", payload);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [...new Uint8Array(digest)].map((byte) => `${byte < 16 ? "0" : ""}${byte.toString(16)}`).join("");
 }
 function parseRepository(value, invalidMessage = "Repository must use the owner/repository format.") {
   const match = value.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/);
@@ -1891,10 +1898,10 @@ function matchesPattern(path, pattern) {
   const normalized = (0, import_obsidian4.normalizePath)(pattern.replace(/^\//, ""));
   if (normalized.endsWith("/")) {
     const directory = normalized.slice(0, -1);
-    return normalized.includes("/") ? path === directory || path.startsWith(normalized) : path.split("/").includes(directory);
+    return normalized.indexOf("/") !== -1 ? path === directory || path.startsWith(normalized) : path.split("/").indexOf(directory) !== -1;
   }
-  if (!normalized.includes("*") && !normalized.includes("?")) {
-    return normalized.includes("/") ? path === normalized || path.startsWith(`${normalized}/`) : path.split("/").includes(normalized);
+  if (normalized.indexOf("*") === -1 && normalized.indexOf("?") === -1) {
+    return normalized.indexOf("/") !== -1 ? path === normalized || path.startsWith(`${normalized}/`) : path.split("/").indexOf(normalized) !== -1;
   }
   const doubleStarToken = "__GITSYNC_DOUBLE_STAR__";
   const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, doubleStarToken).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(new RegExp(doubleStarToken, "g"), ".*");
@@ -3400,7 +3407,7 @@ var TRANSLATIONS = {
 function resolveLanguage(setting, systemLanguage = systemLocale()) {
   if (setting !== "auto") return setting;
   const locale = systemLanguage.replace(/_/g, "-").toLocaleLowerCase();
-  if (locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.startsWith("zh-mo") || locale.includes("hant")) return "zh-TW";
+  if (locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.startsWith("zh-mo") || locale.indexOf("hant") !== -1) return "zh-TW";
   if (locale.startsWith("zh")) return "zh";
   if (locale.startsWith("pt-br")) return "pt-BR";
   if (locale.startsWith("en-gb")) return "en-GB";
@@ -3599,7 +3606,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       lastSyncSummary: localSyncState.lastSyncSummary
     };
     let migrated = legacyData !== null || (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
-    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).includes(this.settings.syncIgnorePatterns)) {
+    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).indexOf(this.settings.syncIgnorePatterns) !== -1) {
       this.settings.syncIgnorePatterns = defaultIgnorePatterns;
       migrated = true;
     }
@@ -3634,7 +3641,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     return formatDateTime(this.settings.language, timestamp);
   }
   getLanguageOptions() {
-    return LANGUAGE_OPTIONS;
+    return Object.keys(LANGUAGE_OPTIONS).map((key) => [key, LANGUAGE_OPTIONS[key]]);
   }
   getCurrentDeviceName() {
     return defaultDeviceName();
@@ -3723,7 +3730,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     await this.app.workspace.getLeaf(false).openFile(file);
   }
   isFavorite(path) {
-    return this.settings.favorites.includes(path);
+    return this.settings.favorites.indexOf(path) !== -1;
   }
   async toggleFavorite(file) {
     const isFavorite = this.isFavorite(file.path);
@@ -3773,8 +3780,8 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
         }
         this.searchCache.set(file.path, content);
       }
-      if (!terms.every((term) => path.includes(term) || content.includes(term))) return;
-      const score = terms.reduce((total, term) => total + (path.includes(term) ? 10 : 1), 0);
+      if (!terms.every((term) => path.indexOf(term) !== -1 || content.indexOf(term) !== -1)) return;
+      const score = terms.reduce((total, term) => total + (path.indexOf(term) !== -1 ? 10 : 1), 0);
       results.push({ file, score });
     }));
     return results.sort((a, b) => b.score - a.score || a.file.basename.localeCompare(b.file.basename) || a.file.path.localeCompare(b.file.path)).slice(0, 100).map(({ file }) => file);
@@ -4064,7 +4071,7 @@ function normalizeTrackedPaths(paths) {
   return output;
 }
 async function ensureAdapterParentFolders(plugin, path) {
-  const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const parent = path.indexOf("/") !== -1 ? path.slice(0, path.lastIndexOf("/")) : "";
   if (!parent) return;
   let current = "";
   for (const segment of parent.split("/")) {

@@ -338,7 +338,8 @@ export class GitSyncPortalDashboardView extends ItemView {
       this.scheduleSearchRender(results);
     });
     input.addEventListener("input", (event) => {
-      if ((event as InputEvent).isComposing || this.isSearchComposing) return;
+      const isComposing = "isComposing" in event && event.isComposing === true;
+      if (isComposing || this.isSearchComposing) return;
       this.searchQuery = input.value;
       this.scheduleSearchRender(results);
     });
@@ -569,7 +570,7 @@ export class GitSyncPortalDashboardView extends ItemView {
 
   private openParentFolder(): void {
     if (!this.currentFolderPath) return;
-    const parent = this.currentFolderPath.includes("/")
+    const parent = this.currentFolderPath.indexOf("/") !== -1
       ? this.currentFolderPath.slice(0, this.currentFolderPath.lastIndexOf("/"))
       : "";
     this.openFolder(parent, true);
