@@ -3452,7 +3452,7 @@ var DEFAULT_SETTINGS = {
   paragraphSpacing: 1,
   dashboardScrollTop: 0,
   quizProgress: {},
-  syncRepository: "kaleido1/Class-Notes",
+  syncRepository: "",
   syncBranch: "main",
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),

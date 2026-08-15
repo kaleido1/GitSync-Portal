@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.13] - 2026-08-16
+
+### Fixed
+
+- New installations now leave the GitHub repository field blank instead of pre-filling a personal repository.
+
 ## [2.1.12] - 2026-08-16
 
 ### Fixed
