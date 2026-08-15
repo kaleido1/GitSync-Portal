@@ -7,7 +7,6 @@ export const LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 type DashboardTab = "home" | "files" | "favorites" | "history";
 type ViewerListItem = TFile | TFolder;
 const HISTORY_BATCH_SIZE = 40;
-const DASHBOARD_SCROLL_STATE_KEY_PREFIX = "gitsync-portal:dashboard-scroll:";
 let savedDashboardScrollTop = 0;
 
 export class GitSyncPortalDashboardView extends ItemView {
@@ -141,17 +140,9 @@ export class GitSyncPortalDashboardView extends ItemView {
     });
   }
 
-  private scrollStateKey(): string {
-    return `${DASHBOARD_SCROLL_STATE_KEY_PREFIX}${this.app.vault.getName()}`;
-  }
-
   private loadSavedScrollTop(): number {
-    try {
-      const value = Number(window.localStorage.getItem(this.scrollStateKey()));
-      return Number.isFinite(value) && value >= 0 ? value : 0;
-    } catch {
-      return 0;
-    }
+    const value = Number(this.plugin.settings.dashboardScrollTop);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
   }
 
   private scheduleScrollSave(): void {
@@ -163,11 +154,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   }
 
   private saveScrollTop(): void {
-    try {
-      window.localStorage.setItem(this.scrollStateKey(), String(savedDashboardScrollTop));
-    } catch {
-      // Device-local state must not prevent Portal from opening.
-    }
+    void this.plugin.saveDashboardScrollTop(savedDashboardScrollTop);
   }
 
   private renderTabs(root: HTMLElement): void {

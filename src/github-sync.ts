@@ -14,6 +14,7 @@ const GENERATED_CONFLICT_COPY = /(?:^|\/)[^/]+\.conflict-[a-z0-9_-]+-\d{8}T\d{6}
 const LEGACY_PLUGIN_IDS = new Set(["gitsync-port", "obsidian-viewer"]);
 const MAX_SYNC_ATTEMPTS = 5;
 const MAX_REF_UPDATE_ATTEMPTS = 8;
+const MAX_REMOTE_RETRY_DELAY_MS = 15_000;
 const MASS_DELETION_MINIMUM = 20;
 const MASS_DELETION_RATIO = 0.25;
 
@@ -162,8 +163,8 @@ export class GitHubSyncService {
       for (let attempt = 1; attempt <= MAX_SYNC_ATTEMPTS; attempt++) {
         try {
           if (attempt > 1) {
-            await sleep(600 * attempt);
             this.update("connecting", this.plugin.t("statusRemoteRetry", { attempt }));
+            await sleep(remoteRetryDelay(attempt));
           }
           return await this.syncAttempt(token, branch, mode);
         } catch (error) {
@@ -242,7 +243,7 @@ export class GitHubSyncService {
       }),
     ];
     for (let index = 0; index < pullOperations.length; index++) {
-      const operation = pullOperations[index]!;
+      const operation = pullOperations[index];
       this.update("pulling", this.plugin.t("statusPulling", { path: operation.path }), index + 1, pullOperations.length);
       if (operation.remote) {
         await this.writeRemoteFile(token, operation.remote);
@@ -250,7 +251,7 @@ export class GitHubSyncService {
       } else {
         const existing = this.plugin.app.vault.getFileByPath(operation.path);
         if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
-          if (existing) await this.plugin.app.vault.trash(existing, false);
+          if (existing) await this.plugin.app.fileManager.trashFile(existing);
           else await this.plugin.app.vault.adapter.trashLocal(operation.path);
           deleted++;
         }
@@ -329,7 +330,7 @@ export class GitHubSyncService {
     let pulled = 0;
     let deleted = 0;
     for (let index = 0; index < operations.length; index++) {
-      const operation = operations[index]!;
+      const operation = operations[index];
       this.update("pulling", this.plugin.t("statusPulling", { path: operation.path }), index + 1, operations.length);
       if (operation.remote) {
         await this.writeRemoteFile(token, operation.remote);
@@ -431,7 +432,7 @@ export class GitHubSyncService {
   private async deleteLocalPath(path: string): Promise<boolean> {
     const existing = this.plugin.app.vault.getFileByPath(path);
     if (existing) {
-      await this.plugin.app.vault.trash(existing, false);
+      await this.plugin.app.fileManager.trashFile(existing);
       return true;
     }
     if (await this.plugin.app.vault.adapter.exists(path)) {
@@ -446,8 +447,8 @@ export class GitHubSyncService {
     let latestRemoteChange: RemoteChangedDuringSyncError | null = null;
     for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
       if (attempt > 1) {
-        await sleep(Math.min(5000, 350 * attempt));
         this.update("pushing", this.plugin.t("statusCommitRetry", { attempt }));
+        await sleep(remoteRetryDelay(attempt));
         remote = await this.getHead(token, branch);
         if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
           throw new RemoteChangedDuringSyncError(this.plugin.t("remoteSamePathChanged"));
@@ -538,7 +539,7 @@ export class GitHubSyncService {
     const files = await this.listAdapterFiles();
     const snapshot = new Map<string, LocalFile>();
     for (let index = 0; index < files.length; index++) {
-      const path = files[index]!;
+      const path = files[index];
       this.update("scanning", this.plugin.t("statusScanning", { path }), index + 1, files.length);
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
@@ -779,6 +780,10 @@ export class GitHubSyncService {
   }
 }
 
+function remoteRetryDelay(attempt: number): number {
+  return Math.min(MAX_REMOTE_RETRY_DELAY_MS, 1_500 * (2 ** (attempt - 2)));
+}
+
 export function createReconcilePlan(
   local: Map<string, LocalFile>,
   remote: Map<string, RemoteFile>,
@@ -899,7 +904,7 @@ export async function gitBlobSha(data: ArrayBuffer): Promise<string> {
 export function parseRepository(value: string, invalidMessage = "Repository must use the owner/repository format."): { owner: string; repository: string } {
   const match = value.trim().match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/);
   if (!match) throw new Error(invalidMessage);
-  return { owner: match[1]!, repository: match[2]! };
+  return { owner: match[1], repository: match[2] };
 }
 
 function parseIgnorePatterns(value: string): string[] {
@@ -919,7 +924,8 @@ function matchesPattern(path: string, pattern: string): boolean {
       ? path === normalized || path.startsWith(`${normalized}/`)
       : path.split("/").includes(normalized);
   }
-  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\u0000/g, ".*");
+  const doubleStarToken = "__GITSYNC_DOUBLE_STAR__";
+  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, doubleStarToken).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(new RegExp(doubleStarToken, "g"), ".*");
   return new RegExp(`^${escaped}$`).test(path);
 }
 
@@ -946,7 +952,10 @@ class EmptyRepositoryError extends Error {
 }
 
 function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") setTimeout(resolve, milliseconds);
+    else window.activeWindow.setTimeout(resolve, milliseconds);
+  });
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
@@ -955,7 +964,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   const worker = async (): Promise<void> => {
     while (nextIndex < items.length) {
       const index = nextIndex++;
-      output[index] = await mapper(items[index]!);
+      output[index] = await mapper(items[index]);
     }
   };
   await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));

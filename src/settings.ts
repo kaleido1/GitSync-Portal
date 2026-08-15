@@ -11,7 +11,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = (key: TranslationKey, values?: Record<string, string | number>): string => this.plugin.t(key, values);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("appName") });
+    new Setting(containerEl).setName(t("appName")).setHeading();
 
     new Setting(containerEl)
       .setName(t("language"))
@@ -26,7 +26,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
       });
 
     containerEl.createEl("p", { text: t("settingsIntro"), cls: "setting-item-description" });
-    containerEl.createEl("h3", { text: t("syncSection") });
+    new Setting(containerEl).setName(t("syncSection")).setHeading();
     containerEl.createEl("p", { text: t("syncDescription"), cls: "setting-item-description" });
 
     new Setting(containerEl)
@@ -37,7 +37,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
         text.setPlaceholder(this.plugin.getGitHubToken() ? t("tokenSavedPlaceholder") : "github_pat_…");
         text.onChange((value) => { if (value.trim()) this.plugin.setGitHubToken(value); });
       })
-      .addButton((button) => button.setButtonText(t("clearToken")).setWarning().onClick(() => {
+      .addButton((button) => button.setButtonText(t("clearToken")).setDestructive().onClick(() => {
         this.plugin.setGitHubToken("");
         this.display();
       }));
@@ -105,7 +105,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName(t("ignoredPaths"))
       .setDesc(t("ignoredPathsDescription"))
-      .addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
+      .addTextArea((text) => text.setPlaceholder(`.DS_Store\n${this.app.vault.configDir}/workspace*.json`).setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
         this.plugin.settings.syncIgnorePatterns = value;
         await this.plugin.saveSettings();
       }));
@@ -134,21 +134,21 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
       this.plugin.settings.history = this.plugin.settings.history.slice(0, value);
     });
 
-    containerEl.createEl("h3", { text: t("readingDisplay") });
+    new Setting(containerEl).setName(t("readingDisplay")).setHeading();
     this.addSlider("bodyFontSize", "14–24 px", 14, 24, 1, this.plugin.settings.fontSize, (value) => { this.plugin.settings.fontSize = value; });
     this.addSlider("bodyLineHeight", "1.2–2.2", 1.2, 2.2, 0.1, this.plugin.settings.lineHeight, (value) => { this.plugin.settings.lineHeight = value; });
     this.addSlider("contentMaxWidth", "600–1200 px", 600, 1200, 50, this.plugin.settings.contentWidth, (value) => { this.plugin.settings.contentWidth = value; });
     this.addSlider("paragraphSpacing", "0.5–2.0 em", 0.5, 2, 0.1, this.plugin.settings.paragraphSpacing, (value) => { this.plugin.settings.paragraphSpacing = value; });
 
-    containerEl.createEl("h3", { text: t("dataManagement") });
+    new Setting(containerEl).setName(t("dataManagement")).setHeading();
     new Setting(containerEl)
       .setName(t("clearHistory"))
       .setDesc(t("clearHistoryDescription", { count: this.plugin.settings.history.length }))
-      .addButton((button) => button.setWarning().setButtonText(t("clear")).onClick(async () => { await this.plugin.clearHistory(); this.display(); }));
+      .addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => { await this.plugin.clearHistory(); this.display(); }));
     new Setting(containerEl)
       .setName(t("clearQuizProgress"))
       .setDesc(t("clearQuizProgressDescription"))
-      .addButton((button) => button.setWarning().setButtonText(t("clear")).onClick(async () => {
+      .addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
         this.plugin.settings.quizProgress = {};
         await this.plugin.saveSettings();
         this.display();
@@ -172,7 +172,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
   }
 
   private addSlider(name: TranslationKey, description: string, min: number, max: number, step: number, value: number, assign: (value: number) => void): void {
-    new Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(description).addSlider((slider) => slider.setLimits(min, max, step).setValue(value).setDynamicTooltip().onChange(async (next) => {
+    new Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(description).addSlider((slider) => slider.setLimits(min, max, step).setValue(value).onChange(async (next) => {
       assign(next);
       await this.plugin.saveSettings();
     }));

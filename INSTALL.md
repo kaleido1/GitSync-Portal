@@ -2,36 +2,35 @@
 
 The same plugin package supports Android, iOS, Windows, macOS, and Linux.
 
-## Download
+## Community installation
 
-Download [gitsync-portal-2.1.5.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.5/gitsync-portal-2.1.5.zip). The archive contains:
+After GitSync Portal is available in the Obsidian Community Plugins directory, open **Settings → Community plugins → Browse**, search for **GitSync Portal**, then select **Install** and **Enable**. Obsidian downloads the matching release assets automatically.
+
+## Manual review installation
+
+Download `main.js`, `manifest.json`, and `styles.css` from the [GitHub release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.10) and place them directly in:
 
 ```text
-gitsync-portal/
-├── main.js
-├── manifest.json
-└── styles.css
+<Vault>/.obsidian/plugins/gitsync-portal/
 ```
 
-Extract it directly into `<Vault>/.obsidian/plugins/`. Do not create a nested `gitsync-portal/gitsync-portal/` directory.
+Do not create a nested directory and do not use a ZIP archive; the Obsidian community directory expects the three release assets as separate files.
 
 ## Desktop
 
-On Windows, enable **Hidden items** in File Explorer. On macOS, press `Command + Shift + .` in Finder to show hidden files. Open the vault, navigate to `.obsidian/plugins/`, extract the package, reload Obsidian, and enable **GitSync Portal** under Community plugins.
+On Windows, enable **Hidden items** in File Explorer. On macOS, press `Command + Shift + .` in Finder to show hidden files. Open the vault, navigate to `.obsidian/plugins/gitsync-portal/`, place the three files there, reload Obsidian, and enable **GitSync Portal** under Community plugins.
 
 On Linux:
 
-```bash
-unzip gitsync-portal-2.1.5.zip -d "/path/to/Vault/.obsidian/plugins/"
-```
+Copy the three files into `/path/to/Vault/.obsidian/plugins/gitsync-portal/`, then reload Obsidian.
 
 ## Android
 
-Enable hidden files in your file manager, open the vault's `.obsidian/plugins/` directory, extract the package, fully close Obsidian, reopen it, and enable GitSync Portal.
+Enable hidden files in your file manager, open the vault's `.obsidian/plugins/gitsync-portal/` directory, copy the three files, fully close Obsidian, reopen it, and enable GitSync Portal.
 
 ## iPhone and iPad
 
-The iOS Files app does not make hidden directories convenient to manage. The recommended path is to install the plugin from a Mac or Windows device that shares the same vault through iCloud or your existing file synchronization method. A capable iOS file manager can also extract the package directly into `.obsidian/plugins/`.
+The iOS Files app does not make hidden directories convenient to manage. The recommended path is to install the plugin from the Obsidian Community Plugins browser or from a Mac or Windows device that shares the same vault through iCloud or your existing file synchronization method.
 
 ## Upgrade from an earlier name
 
@@ -48,7 +47,7 @@ GitSync Portal reads `gitsync-port` and `obsidian-viewer` data and SecretStorage
 
 ## Updating GitSync Portal
 
-Release archives do not contain `data.json`. Update only these program files:
+Community releases contain only these program files:
 
 ```text
 main.js

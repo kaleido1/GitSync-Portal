@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { buildSync } from "esbuild";
 import Module from "node:module";
 
+const originalLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (request === "obsidian") return { getLanguage: () => "en" };
+  return originalLoad.call(this, request, parent, isMain);
+};
+
 const output = buildSync({
   entryPoints: ["src/i18n.ts"],
   bundle: true,
@@ -9,6 +15,7 @@ const output = buildSync({
   platform: "node",
   format: "cjs",
   target: "node20",
+  external: ["obsidian"],
 }).outputFiles[0].text;
 
 const testModule = new Module("i18n-test");
@@ -16,6 +23,7 @@ testModule.filename = "i18n-test.cjs";
 testModule.paths = Module._nodeModulePaths(process.cwd());
 testModule._compile(output, testModule.filename);
 const { LANGUAGE_OPTIONS, resolveLanguage, translate } = testModule.exports;
+Module._load = originalLoad;
 
 assert.equal(Object.keys(LANGUAGE_OPTIONS).length, 23);
 assert.equal(resolveLanguage("auto", "zh-Hans"), "zh");

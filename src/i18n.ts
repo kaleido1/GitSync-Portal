@@ -1,3 +1,5 @@
+import { getLanguage } from "obsidian";
+
 export const LANGUAGE_OPTIONS = {
   auto: "System default",
   en: "English",
@@ -146,6 +148,7 @@ const EN = {
   focusEnabled: "Focus reading mode enabled",
   focusDisabled: "Focus reading mode disabled",
   syncAlreadyRunning: "A sync is already in progress.",
+  syncQueued: "A sync is already in progress. This sync is queued and will start when it finishes.",
   syncSummary: "Pulled {pulled}, uploaded {pushed}, deleted {deleted}, conflicts {conflicts}",
   syncSummaryPull: "Pull only: updated {pulled}, deleted {deleted}, conflicts preserved {conflicts}",
   syncSummaryPush: "Push only: uploaded {pushed}, deleted {deleted}, conflicts preserved {conflicts}",
@@ -159,7 +162,7 @@ const EN = {
   sharedStateReadFailed: "GitSync Portal could not read the shared favorites/history file: {error}",
   sharedStateWriteFailed: "GitSync Portal could not save the shared favorites/history file: {error}",
   statusConnecting: "Connecting to GitHub…",
-  statusRemoteRetry: "The remote just changed. Retrying sync (attempt {attempt})…",
+  statusRemoteRetry: "The remote just changed. Waiting for it to settle before continuing (attempt {attempt})…",
   syncRetryFailed: "Sync retries failed.",
   statusHashing: "Calculating local file fingerprints…",
   statusReconciling: "Reconciling local and remote changes…",
@@ -170,7 +173,7 @@ const EN = {
   statusComplete: "Sync complete",
   statusCompletePull: "Pull-only sync complete",
   statusCompletePush: "Push-only sync complete",
-  statusCommitRetry: "The remote just changed. Committing against the latest version (attempt {attempt})…",
+  statusCommitRetry: "The remote just changed. Waiting for it to settle before committing against the latest version (attempt {attempt})…",
   remoteSamePathChanged: "The remote changed the same path during sync. Reconciling again.",
   remoteContinuouslyChanged: "The remote kept changing, so the sync commit failed.",
   localSide: "local vault",
@@ -339,6 +342,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   focusEnabled: "已进入专注阅读模式",
   focusDisabled: "已退出专注阅读模式",
   syncAlreadyRunning: "同步已经在进行中。",
+  syncQueued: "同步已经在进行中，本次同步已排队，当前任务完成后自动开始。",
   syncSummary: "拉取 {pulled}、上传 {pushed}、删除 {deleted}、冲突 {conflicts}",
   syncSummaryPull: "仅拉取：更新 {pulled}、删除 {deleted}、保留冲突 {conflicts}",
   syncSummaryPush: "仅上传：上传 {pushed}、删除 {deleted}、保留冲突 {conflicts}",
@@ -352,7 +356,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   sharedStateReadFailed: "GitSync Portal 共享收藏/历史文件读取失败：{error}",
   sharedStateWriteFailed: "GitSync Portal 共享收藏/历史文件保存失败：{error}",
   statusConnecting: "正在连接 GitHub…",
-  statusRemoteRetry: "远端刚刚更新，正在重新同步（第 {attempt} 次）…",
+  statusRemoteRetry: "远端刚刚更新，等待远端稳定后继续同步（第 {attempt} 次）…",
   syncRetryFailed: "同步重试失败。",
   statusHashing: "正在计算本地文件指纹…",
   statusReconciling: "正在合并本地与远端变更…",
@@ -363,7 +367,7 @@ const ZH: Partial<Record<TranslationKey, string>> = {
   statusComplete: "同步完成",
   statusCompletePull: "仅拉取完成",
   statusCompletePush: "仅上传完成",
-  statusCommitRetry: "远端刚刚更新，正在基于最新版本提交（第 {attempt} 次）…",
+  statusCommitRetry: "远端刚刚更新，等待远端稳定后基于最新版本提交（第 {attempt} 次）…",
   remoteSamePathChanged: "远端在同步期间修改了同一路径，正在重新合并。",
   remoteContinuouslyChanged: "远端持续变化，同步提交失败。",
   localSide: "本地知识库",
@@ -1206,10 +1210,10 @@ export function formatDateTime(setting: LanguageSetting, timestamp: number): str
 
 function systemLocale(): string {
   try {
-    const obsidianLanguage = globalThis.localStorage?.getItem("language")?.trim();
+    const obsidianLanguage = getLanguage().trim();
     if (obsidianLanguage) return obsidianLanguage;
   } catch {
-    // localStorage can be unavailable in restricted test environments.
+    // Obsidian's language API can be unavailable in restricted test environments.
   }
   return typeof navigator === "undefined" ? "en" : navigator.language || "en";
 }

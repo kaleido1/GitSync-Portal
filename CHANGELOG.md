@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.10] - 2026-08-16
+
+### Added
+
+- Added an MIT license for community-plugin distribution.
+- Added GitHub artifact attestations for the three Obsidian release assets.
+
+### Changed
+
+- Changed release assets to the Obsidian community-plugin format: `main.js`, `manifest.json`, and `styles.css` only.
+- Changed overlapping sync requests from immediate rejection to a shared serial queue.
+- Made remote retry delays increase while a concurrent remote update settles.
+- Replaced browser `localStorage` dashboard state with Obsidian plugin data APIs.
+- Resolved configured vault paths through `Vault.configDir` and replaced deprecated Obsidian settings APIs where available.
+
 ## [2.1.9] - 2026-08-15
 
 ### Fixed

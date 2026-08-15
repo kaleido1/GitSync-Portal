@@ -17,76 +17,6 @@ const PLUGIN_ID = "gitsync-portal";
 const LEGACY_PLUGIN_IDS = ["gitsync-port", "obsidian-viewer"] as const;
 const GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
 const LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"] as const;
-const SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
-const LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
-const PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
-  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  ...LEGACY_PLUGIN_IDS.map((id) => `.obsidian/plugins/${id}/`),
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/",
-].join("\n");
-const DEFAULT_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  "*.conflict-*",
-  "**/*.conflict-*",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
-  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  ...LEGACY_PLUGIN_IDS.map((id) => `.obsidian/plugins/${id}/`),
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/",
-].join("\n");
-const GITSYNC_PORT_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/gitsync-port/local-sync-state.json",
-  ".obsidian/plugins/gitsync-port/*.conflict-*",
-  ".obsidian/plugins/obsidian-viewer/",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/",
-].join("\n");
-const PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/",
-].join("\n");
-const DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/community-plugins*.json",
-  ".obsidian/core-plugins*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  ".obsidian/plugins/obsidian-git/data.json",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/",
-].join("\n");
-const PREVIOUS_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  "node_modules/",
-].join("\n");
-const LEGACY_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  ".obsidian/plugins/obsidian-git/data.json",
-  "node_modules/",
-].join("\n");
 
 export interface ViewerSettings {
   language: LanguageSetting;
@@ -99,6 +29,7 @@ export interface ViewerSettings {
   lineHeight: number;
   contentWidth: number;
   paragraphSpacing: number;
+  dashboardScrollTop: number;
   quizProgress: Record<string, QuizProgress>;
   syncRepository: string;
   syncBranch: string;
@@ -138,12 +69,13 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   lineHeight: 1.7,
   contentWidth: 900,
   paragraphSpacing: 1,
+  dashboardScrollTop: 0,
   quizProgress: {},
   syncRepository: "kaleido1/Class-Notes",
   syncBranch: "main",
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
-  syncIgnorePatterns: DEFAULT_SYNC_IGNORE_PATTERNS,
+  syncIgnorePatterns: "",
   syncMaxFileSizeMb: 50,
   syncOnStartup: false,
   syncOnSave: false,
@@ -161,6 +93,8 @@ export default class GitSyncPortalPlugin extends Plugin {
   private syncOnSaveTimer: number | null = null;
   private periodicSyncTimer: number | null = null;
   private periodicSyncKey = "";
+  private syncQueue: Promise<void> = Promise.resolve();
+  private syncQueueDepth = 0;
   private syncInFlight: Promise<void> | null = null;
   syncStatus: GitHubSyncStatus = { stage: "idle", message: "" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
@@ -276,6 +210,10 @@ export default class GitSyncPortalPlugin extends Plugin {
     const currentData = (await this.loadData()) as Partial<ViewerSettings> | null;
     const legacyData = currentData ? null : await this.loadLegacyPluginData();
     const loaded = currentData ?? legacyData;
+    const defaultIgnorePatterns = defaultSyncIgnorePatterns(this.app.vault.configDir);
+    const savedIgnorePatterns = typeof loaded?.syncIgnorePatterns === "string"
+      ? loaded.syncIgnorePatterns
+      : defaultIgnorePatterns;
     const localSyncState = await this.loadLocalSyncState(loaded);
     const loadedDeviceName = loaded?.syncDeviceName?.trim() ?? "";
     const syncDeviceNameAuto = typeof loaded?.syncDeviceNameAuto === "boolean"
@@ -287,6 +225,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       language: isLanguageSetting(loaded?.language) ? loaded.language : "auto",
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
+      syncIgnorePatterns: savedIgnorePatterns,
       favorites: Array.isArray(loaded?.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded?.history) ? loaded.history : [],
       quizProgress: loaded?.quizProgress && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
@@ -297,8 +236,8 @@ export default class GitSyncPortalPlugin extends Plugin {
     let migrated = legacyData !== null
       || loaded?.syncDeviceNameAuto !== syncDeviceNameAuto
       || loaded?.syncDeviceName !== this.settings.syncDeviceName;
-    if ([PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS, GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
-      this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
+    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).includes(this.settings.syncIgnorePatterns)) {
+      this.settings.syncIgnorePatterns = defaultIgnorePatterns;
       migrated = true;
     }
     if (await this.applySyncedViewerStateFromDisk()) migrated = true;
@@ -343,17 +282,37 @@ export default class GitSyncPortalPlugin extends Plugin {
     return defaultDeviceName();
   }
 
+  async saveDashboardScrollTop(scrollTop: number): Promise<void> {
+    this.settings.dashboardScrollTop = Math.max(0, Math.round(scrollTop));
+    await this.savePluginData();
+  }
+
   async testGitHubConnection(): Promise<string> {
     const result = await this.githubSync.testConnection();
     return `${result.repository} · ${result.branch} · ${result.commitSha.slice(0, 7)}`;
   }
 
   async syncNow(showNotice = true, mode: GitHubSyncMode = "two-way"): Promise<void> {
-    if (this.syncInFlight !== null || this.githubSync.isRunning) {
-      if (showNotice) new Notice(this.t("syncAlreadyRunning"));
-      return;
+    const queuedBehindExisting = this.syncQueueDepth > 0;
+    this.syncQueueDepth++;
+    const queuedSync = this.syncQueue.then(
+      () => this.runSync(showNotice, mode),
+      () => this.runSync(showNotice, mode),
+    );
+    this.syncQueue = queuedSync.catch(() => undefined);
+
+    if (queuedBehindExisting && showNotice) {
+      new Notice(this.t("syncQueued"), 5000);
     }
 
+    try {
+      await queuedSync;
+    } finally {
+      this.syncQueueDepth--;
+    }
+  }
+
+  private async runSync(showNotice: boolean, mode: GitHubSyncMode): Promise<void> {
     // Claim the lock before the first await. This covers the period where
     // saveSettings() runs, before GitHubSyncService can set its own guard.
     let releaseLock!: () => void;
@@ -402,7 +361,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       leaf = this.app.workspace.getLeftLeaf(false) ?? this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
     }
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
 
   async openHomeNote(): Promise<void> {
@@ -691,17 +650,91 @@ export default class GitSyncPortalPlugin extends Plugin {
 }
 
 function syncedViewerStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/${PLUGIN_ID}/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
+  return normalizePath(`${configDir}/plugins/${PLUGIN_ID}/sync-state.json`);
 }
 
 function localSyncStatePath(configDir: string): string {
-  return normalizePath(configDir ? `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+  return normalizePath(`${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`);
 }
 
 function legacyPluginPaths(configDir: string, filename: string): string[] {
-  return LEGACY_PLUGIN_IDS.map((id) => normalizePath(configDir
-    ? `${configDir}/plugins/${id}/${filename}`
-    : `.obsidian/plugins/${id}/${filename}`));
+  return LEGACY_PLUGIN_IDS.map((id) => normalizePath(`${configDir}/plugins/${id}/${filename}`));
+}
+
+function defaultSyncIgnorePatterns(configDir: string): string {
+  return [
+    ".DS_Store",
+    "*.conflict-*",
+    "**/*.conflict-*",
+    `${configDir}/workspace*.json`,
+    `${configDir}/page-preview.json`,
+    `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`,
+    `${configDir}/plugins/${PLUGIN_ID}/*.conflict-*`,
+    ...LEGACY_PLUGIN_IDS.map((id) => `${configDir}/plugins/${id}/`),
+    `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+    `${configDir}/plugins/*/manifest.conflict-*`,
+    "node_modules/",
+  ].join("\n");
+}
+
+function knownLegacySyncIgnorePatterns(configDir: string): string[] {
+  return [
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`,
+      `${configDir}/plugins/${PLUGIN_ID}/*.conflict-*`,
+      ...LEGACY_PLUGIN_IDS.map((id) => `${configDir}/plugins/${id}/`),
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/",
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/gitsync-port/local-sync-state.json`,
+      `${configDir}/plugins/gitsync-port/*.conflict-*`,
+      `${configDir}/plugins/obsidian-viewer/`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/",
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/obsidian-viewer/local-sync-state.json`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/",
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/community-plugins*.json`,
+      `${configDir}/core-plugins*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      `${configDir}/plugins/obsidian-git/data.json`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/",
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      "node_modules/",
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      `${configDir}/plugins/obsidian-git/data.json`,
+      "node_modules/",
+    ].join("\n"),
+  ];
 }
 
 async function firstExistingAdapterPath(plugin: GitSyncPortalPlugin, paths: string[]): Promise<string | null> {

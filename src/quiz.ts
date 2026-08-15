@@ -9,7 +9,7 @@ interface QuizOption {
   text: string;
 }
 
-interface QuizPrompt extends QuizOption {}
+type QuizPrompt = QuizOption;
 
 interface QuizQuestion {
   id: string;
@@ -107,7 +107,10 @@ class QuizRenderChild extends MarkdownRenderChild {
     const record = asRecord(parsed);
     const definitions = await this.readDefinitions();
     const id = typeof record?.id === "string" ? record.id : null;
-    if (id && definitions.has(id)) return definitions.get(id)!;
+    if (id) {
+      const definition = definitions.get(id);
+      if (definition) return definition;
+    }
     if (record?.source === "current") {
       const first = definitions.values().next().value as QuizDefinition | undefined;
       if (first) return first;
@@ -163,7 +166,7 @@ class QuizRenderChild extends MarkdownRenderChild {
       if (completed) this.renderTotal(card, quiz, state);
 
       const oneAtATime = quiz.mode !== "all-at-once";
-      const visibleQuestions = oneAtATime ? [questions[state.page]!] : questions;
+      const visibleQuestions = oneAtATime ? [questions[state.page]] : questions;
       visibleQuestions.forEach((question) => this.renderQuestion(card, question, state, save, draw));
 
       if (oneAtATime) {
@@ -183,7 +186,7 @@ class QuizRenderChild extends MarkdownRenderChild {
           }),
         });
         const next = navigation.createEl("button", { text: this.plugin.t("nextQuestion") });
-        next.disabled = state.page >= questions.length - 1 || !submittedQuestions.has(questions[state.page]!.id);
+        next.disabled = state.page >= questions.length - 1 || !submittedQuestions.has(questions[state.page].id);
         next.addEventListener("click", () => {
           state.page = Math.min(questions.length - 1, state.page + 1);
           save();
@@ -282,7 +285,7 @@ class QuizRenderChild extends MarkdownRenderChild {
         const up = row.createEl("button", { text: "▲", attr: { "aria-label": this.plugin.t("moveUp") } });
         up.disabled = disabled || index === 0;
         up.addEventListener("click", () => {
-          [order[index - 1], order[index]] = [order[index]!, order[index - 1]!];
+          [order[index - 1], order[index]] = [order[index], order[index - 1]];
           state.answers[question.id] = order;
           save();
           draw();
@@ -290,7 +293,7 @@ class QuizRenderChild extends MarkdownRenderChild {
         const down = row.createEl("button", { text: "▼", attr: { "aria-label": this.plugin.t("moveDown") } });
         down.disabled = disabled || index === order.length - 1;
         down.addEventListener("click", () => {
-          [order[index], order[index + 1]] = [order[index + 1]!, order[index]!];
+          [order[index], order[index + 1]] = [order[index + 1], order[index]];
           state.answers[question.id] = order;
           save();
           draw();

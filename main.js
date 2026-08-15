@@ -22,7 +22,7 @@ __export(main_exports, {
   default: () => GitSyncPortalPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/viewer-view.ts
 var import_obsidian = require("obsidian");
@@ -30,7 +30,6 @@ var VIEW_TYPE_GITSYNC_PORTAL = "gitsync-portal-dashboard";
 var LEGACY_VIEW_TYPE_GITSYNC_PORT = "gitsync-port-dashboard";
 var LEGACY_VIEW_TYPE_VIEWER = "obsidian-viewer-dashboard";
 var HISTORY_BATCH_SIZE = 40;
-var DASHBOARD_SCROLL_STATE_KEY_PREFIX = "gitsync-portal:dashboard-scroll:";
 var savedDashboardScrollTop = 0;
 var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
@@ -146,16 +145,9 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
       this.applyScrollTop(savedDashboardScrollTop);
     });
   }
-  scrollStateKey() {
-    return `${DASHBOARD_SCROLL_STATE_KEY_PREFIX}${this.app.vault.getName()}`;
-  }
   loadSavedScrollTop() {
-    try {
-      const value = Number(window.localStorage.getItem(this.scrollStateKey()));
-      return Number.isFinite(value) && value >= 0 ? value : 0;
-    } catch (e) {
-      return 0;
-    }
+    const value = Number(this.plugin.settings.dashboardScrollTop);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
   }
   scheduleScrollSave() {
     if (this.scrollSaveTimer !== null) window.clearTimeout(this.scrollSaveTimer);
@@ -165,10 +157,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     }, 150);
   }
   saveScrollTop() {
-    try {
-      window.localStorage.setItem(this.scrollStateKey(), String(savedDashboardScrollTop));
-    } catch (e) {
-    }
+    void this.plugin.saveDashboardScrollTop(savedDashboardScrollTop);
   }
   renderTabs(root) {
     const tabs = root.createDiv({ cls: "ov-tabs", attr: { role: "tablist" } });
@@ -581,7 +570,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
     const { containerEl } = this;
     const t = (key, values) => this.plugin.t(key, values);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("appName") });
+    new import_obsidian2.Setting(containerEl).setName(t("appName")).setHeading();
     new import_obsidian2.Setting(containerEl).setName(t("language")).setDesc(t("languageDescription")).addDropdown((dropdown) => {
       Object.entries(this.plugin.getLanguageOptions()).forEach(([value, label]) => dropdown.addOption(value, label));
       dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {
@@ -591,7 +580,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
       });
     });
     containerEl.createEl("p", { text: t("settingsIntro"), cls: "setting-item-description" });
-    containerEl.createEl("h3", { text: t("syncSection") });
+    new import_obsidian2.Setting(containerEl).setName(t("syncSection")).setHeading();
     containerEl.createEl("p", { text: t("syncDescription"), cls: "setting-item-description" });
     new import_obsidian2.Setting(containerEl).setName(t("githubToken")).setDesc(t("githubTokenDescription")).addText((text) => {
       text.inputEl.type = "password";
@@ -599,7 +588,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
       text.onChange((value) => {
         if (value.trim()) this.plugin.setGitHubToken(value);
       });
-    }).addButton((button) => button.setButtonText(t("clearToken")).setWarning().onClick(() => {
+    }).addButton((button) => button.setButtonText(t("clearToken")).setDestructive().onClick(() => {
       this.plugin.setGitHubToken("");
       this.display();
     }));
@@ -651,7 +640,8 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
     this.addNumber("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => {
       this.plugin.settings.syncMaxFileSizeMb = value;
     });
-    new import_obsidian2.Setting(containerEl).setName(t("ignoredPaths")).setDesc(t("ignoredPathsDescription")).addTextArea((text) => text.setPlaceholder(".DS_Store\n.obsidian/workspace*.json").setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName(t("ignoredPaths")).setDesc(t("ignoredPathsDescription")).addTextArea((text) => text.setPlaceholder(`.DS_Store
+${this.app.vault.configDir}/workspace*.json`).setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
       this.plugin.settings.syncIgnorePatterns = value;
       await this.plugin.saveSettings();
     }));
@@ -671,7 +661,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
       this.plugin.settings.maxHistory = value;
       this.plugin.settings.history = this.plugin.settings.history.slice(0, value);
     });
-    containerEl.createEl("h3", { text: t("readingDisplay") });
+    new import_obsidian2.Setting(containerEl).setName(t("readingDisplay")).setHeading();
     this.addSlider("bodyFontSize", "14\u201324 px", 14, 24, 1, this.plugin.settings.fontSize, (value) => {
       this.plugin.settings.fontSize = value;
     });
@@ -684,12 +674,12 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
     this.addSlider("paragraphSpacing", "0.5\u20132.0 em", 0.5, 2, 0.1, this.plugin.settings.paragraphSpacing, (value) => {
       this.plugin.settings.paragraphSpacing = value;
     });
-    containerEl.createEl("h3", { text: t("dataManagement") });
-    new import_obsidian2.Setting(containerEl).setName(t("clearHistory")).setDesc(t("clearHistoryDescription", { count: this.plugin.settings.history.length })).addButton((button) => button.setWarning().setButtonText(t("clear")).onClick(async () => {
+    new import_obsidian2.Setting(containerEl).setName(t("dataManagement")).setHeading();
+    new import_obsidian2.Setting(containerEl).setName(t("clearHistory")).setDesc(t("clearHistoryDescription", { count: this.plugin.settings.history.length })).addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
       await this.plugin.clearHistory();
       this.display();
     }));
-    new import_obsidian2.Setting(containerEl).setName(t("clearQuizProgress")).setDesc(t("clearQuizProgressDescription")).addButton((button) => button.setWarning().setButtonText(t("clear")).onClick(async () => {
+    new import_obsidian2.Setting(containerEl).setName(t("clearQuizProgress")).setDesc(t("clearQuizProgressDescription")).addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
       this.plugin.settings.quizProgress = {};
       await this.plugin.saveSettings();
       this.display();
@@ -710,7 +700,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
     }));
   }
   addSlider(name, description, min, max, step, value, assign) {
-    new import_obsidian2.Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(description).addSlider((slider) => slider.setLimits(min, max, step).setValue(value).setDynamicTooltip().onChange(async (next) => {
+    new import_obsidian2.Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(description).addSlider((slider) => slider.setLimits(min, max, step).setValue(value).onChange(async (next) => {
       assign(next);
       await this.plugin.saveSettings();
     }));
@@ -1101,6 +1091,7 @@ var GENERATED_CONFLICT_COPY = /(?:^|\/)[^/]+\.conflict-[a-z0-9_-]+-\d{8}T\d{6}Z(
 var LEGACY_PLUGIN_IDS = /* @__PURE__ */ new Set(["gitsync-port", "obsidian-viewer"]);
 var MAX_SYNC_ATTEMPTS = 5;
 var MAX_REF_UPDATE_ATTEMPTS = 8;
+var MAX_REMOTE_RETRY_DELAY_MS = 15e3;
 var MASS_DELETION_MINIMUM = 20;
 var MASS_DELETION_RATIO = 0.25;
 var GitHubSyncService = class {
@@ -1131,8 +1122,8 @@ var GitHubSyncService = class {
       for (let attempt = 1; attempt <= MAX_SYNC_ATTEMPTS; attempt++) {
         try {
           if (attempt > 1) {
-            await sleep(600 * attempt);
             this.update("connecting", this.plugin.t("statusRemoteRetry", { attempt }));
+            await sleep(remoteRetryDelay(attempt));
           }
           return await this.syncAttempt(token, branch, mode);
         } catch (error) {
@@ -1210,7 +1201,7 @@ var GitHubSyncService = class {
       } else {
         const existing = this.plugin.app.vault.getFileByPath(operation.path);
         if (existing || await this.plugin.app.vault.adapter.exists(operation.path)) {
-          if (existing) await this.plugin.app.vault.trash(existing, false);
+          if (existing) await this.plugin.app.fileManager.trashFile(existing);
           else await this.plugin.app.vault.adapter.trashLocal(operation.path);
           deleted++;
         }
@@ -1357,7 +1348,7 @@ var GitHubSyncService = class {
   async deleteLocalPath(path) {
     const existing = this.plugin.app.vault.getFileByPath(path);
     if (existing) {
-      await this.plugin.app.vault.trash(existing, false);
+      await this.plugin.app.fileManager.trashFile(existing);
       return true;
     }
     if (await this.plugin.app.vault.adapter.exists(path)) {
@@ -1371,8 +1362,8 @@ var GitHubSyncService = class {
     let latestRemoteChange = null;
     for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
       if (attempt > 1) {
-        await sleep(Math.min(5e3, 350 * attempt));
         this.update("pushing", this.plugin.t("statusCommitRetry", { attempt }));
+        await sleep(remoteRetryDelay(attempt));
         remote = await this.getHead(token, branch);
         if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
           throw new RemoteChangedDuringSyncError(this.plugin.t("remoteSamePathChanged"));
@@ -1680,6 +1671,9 @@ var GitHubSyncService = class {
     this.onStatus({ stage, message, current, total });
   }
 };
+function remoteRetryDelay(attempt) {
+  return Math.min(MAX_REMOTE_RETRY_DELAY_MS, 1500 * 2 ** (attempt - 2));
+}
 function createReconcilePlan(local, remote, base) {
   var _a;
   const upload = /* @__PURE__ */ new Map();
@@ -1785,7 +1779,8 @@ function matchesPattern(path, pattern) {
   if (!normalized.includes("*") && !normalized.includes("?")) {
     return normalized.includes("/") ? path === normalized || path.startsWith(`${normalized}/`) : path.split("/").includes(normalized);
   }
-  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\u0000/g, ".*");
+  const doubleStarToken = "__GITSYNC_DOUBLE_STAR__";
+  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, doubleStarToken).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(new RegExp(doubleStarToken, "g"), ".*");
   return new RegExp(`^${escaped}$`).test(path);
 }
 function sanitizeSegment(value) {
@@ -1807,7 +1802,10 @@ var EmptyRepositoryError = class extends Error {
   }
 };
 function sleep(milliseconds) {
-  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") setTimeout(resolve, milliseconds);
+    else window.activeWindow.setTimeout(resolve, milliseconds);
+  });
 }
 async function mapWithConcurrency(items, limit, mapper) {
   const output = new Array(items.length);
@@ -1829,6 +1827,7 @@ function isEmptyRepositoryError(error) {
 }
 
 // src/i18n.ts
+var import_obsidian5 = require("obsidian");
 var LANGUAGE_OPTIONS = {
   auto: "System default",
   en: "English",
@@ -1972,6 +1971,7 @@ var EN = {
   focusEnabled: "Focus reading mode enabled",
   focusDisabled: "Focus reading mode disabled",
   syncAlreadyRunning: "A sync is already in progress.",
+  syncQueued: "A sync is already in progress. This sync is queued and will start when it finishes.",
   syncSummary: "Pulled {pulled}, uploaded {pushed}, deleted {deleted}, conflicts {conflicts}",
   syncSummaryPull: "Pull only: updated {pulled}, deleted {deleted}, conflicts preserved {conflicts}",
   syncSummaryPush: "Push only: uploaded {pushed}, deleted {deleted}, conflicts preserved {conflicts}",
@@ -1985,7 +1985,7 @@ var EN = {
   sharedStateReadFailed: "GitSync Portal could not read the shared favorites/history file: {error}",
   sharedStateWriteFailed: "GitSync Portal could not save the shared favorites/history file: {error}",
   statusConnecting: "Connecting to GitHub\u2026",
-  statusRemoteRetry: "The remote just changed. Retrying sync (attempt {attempt})\u2026",
+  statusRemoteRetry: "The remote just changed. Waiting for it to settle before continuing (attempt {attempt})\u2026",
   syncRetryFailed: "Sync retries failed.",
   statusHashing: "Calculating local file fingerprints\u2026",
   statusReconciling: "Reconciling local and remote changes\u2026",
@@ -1996,7 +1996,7 @@ var EN = {
   statusComplete: "Sync complete",
   statusCompletePull: "Pull-only sync complete",
   statusCompletePush: "Push-only sync complete",
-  statusCommitRetry: "The remote just changed. Committing against the latest version (attempt {attempt})\u2026",
+  statusCommitRetry: "The remote just changed. Waiting for it to settle before committing against the latest version (attempt {attempt})\u2026",
   remoteSamePathChanged: "The remote changed the same path during sync. Reconciling again.",
   remoteContinuouslyChanged: "The remote kept changing, so the sync commit failed.",
   localSide: "local vault",
@@ -2162,6 +2162,7 @@ var ZH = {
   focusEnabled: "\u5DF2\u8FDB\u5165\u4E13\u6CE8\u9605\u8BFB\u6A21\u5F0F",
   focusDisabled: "\u5DF2\u9000\u51FA\u4E13\u6CE8\u9605\u8BFB\u6A21\u5F0F",
   syncAlreadyRunning: "\u540C\u6B65\u5DF2\u7ECF\u5728\u8FDB\u884C\u4E2D\u3002",
+  syncQueued: "\u540C\u6B65\u5DF2\u7ECF\u5728\u8FDB\u884C\u4E2D\uFF0C\u672C\u6B21\u540C\u6B65\u5DF2\u6392\u961F\uFF0C\u5F53\u524D\u4EFB\u52A1\u5B8C\u6210\u540E\u81EA\u52A8\u5F00\u59CB\u3002",
   syncSummary: "\u62C9\u53D6 {pulled}\u3001\u4E0A\u4F20 {pushed}\u3001\u5220\u9664 {deleted}\u3001\u51B2\u7A81 {conflicts}",
   syncSummaryPull: "\u4EC5\u62C9\u53D6\uFF1A\u66F4\u65B0 {pulled}\u3001\u5220\u9664 {deleted}\u3001\u4FDD\u7559\u51B2\u7A81 {conflicts}",
   syncSummaryPush: "\u4EC5\u4E0A\u4F20\uFF1A\u4E0A\u4F20 {pushed}\u3001\u5220\u9664 {deleted}\u3001\u4FDD\u7559\u51B2\u7A81 {conflicts}",
@@ -2175,7 +2176,7 @@ var ZH = {
   sharedStateReadFailed: "GitSync Portal \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF1A{error}",
   sharedStateWriteFailed: "GitSync Portal \u5171\u4EAB\u6536\u85CF/\u5386\u53F2\u6587\u4EF6\u4FDD\u5B58\u5931\u8D25\uFF1A{error}",
   statusConnecting: "\u6B63\u5728\u8FDE\u63A5 GitHub\u2026",
-  statusRemoteRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u91CD\u65B0\u540C\u6B65\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
+  statusRemoteRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u7B49\u5F85\u8FDC\u7AEF\u7A33\u5B9A\u540E\u7EE7\u7EED\u540C\u6B65\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
   syncRetryFailed: "\u540C\u6B65\u91CD\u8BD5\u5931\u8D25\u3002",
   statusHashing: "\u6B63\u5728\u8BA1\u7B97\u672C\u5730\u6587\u4EF6\u6307\u7EB9\u2026",
   statusReconciling: "\u6B63\u5728\u5408\u5E76\u672C\u5730\u4E0E\u8FDC\u7AEF\u53D8\u66F4\u2026",
@@ -2186,7 +2187,7 @@ var ZH = {
   statusComplete: "\u540C\u6B65\u5B8C\u6210",
   statusCompletePull: "\u4EC5\u62C9\u53D6\u5B8C\u6210",
   statusCompletePush: "\u4EC5\u4E0A\u4F20\u5B8C\u6210",
-  statusCommitRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u6B63\u5728\u57FA\u4E8E\u6700\u65B0\u7248\u672C\u63D0\u4EA4\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
+  statusCommitRetry: "\u8FDC\u7AEF\u521A\u521A\u66F4\u65B0\uFF0C\u7B49\u5F85\u8FDC\u7AEF\u7A33\u5B9A\u540E\u57FA\u4E8E\u6700\u65B0\u7248\u672C\u63D0\u4EA4\uFF08\u7B2C {attempt} \u6B21\uFF09\u2026",
   remoteSamePathChanged: "\u8FDC\u7AEF\u5728\u540C\u6B65\u671F\u95F4\u4FEE\u6539\u4E86\u540C\u4E00\u8DEF\u5F84\uFF0C\u6B63\u5728\u91CD\u65B0\u5408\u5E76\u3002",
   remoteContinuouslyChanged: "\u8FDC\u7AEF\u6301\u7EED\u53D8\u5316\uFF0C\u540C\u6B65\u63D0\u4EA4\u5931\u8D25\u3002",
   localSide: "\u672C\u5730\u77E5\u8BC6\u5E93",
@@ -3302,9 +3303,8 @@ function formatDateTime(setting, timestamp) {
   return new Intl.DateTimeFormat(resolveLanguage(setting), { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
 }
 function systemLocale() {
-  var _a, _b;
   try {
-    const obsidianLanguage = (_b = (_a = globalThis.localStorage) == null ? void 0 : _a.getItem("language")) == null ? void 0 : _b.trim();
+    const obsidianLanguage = (0, import_obsidian5.getLanguage)().trim();
     if (obsidianLanguage) return obsidianLanguage;
   } catch (e) {
   }
@@ -3316,76 +3316,6 @@ var PLUGIN_ID = "gitsync-portal";
 var LEGACY_PLUGIN_IDS2 = ["gitsync-port", "obsidian-viewer"];
 var GITHUB_TOKEN_SECRET_ID = "gitsync-portal-github-token";
 var LEGACY_GITHUB_TOKEN_SECRET_IDS = ["gitsync-port-github-token", "obsidian-viewer-github-token"];
-var SYNCED_VIEWER_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/sync-state.json`;
-var LOCAL_SYNC_STATE_PATH = `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`;
-var PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
-  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  ...LEGACY_PLUGIN_IDS2.map((id) => `.obsidian/plugins/${id}/`),
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/"
-].join("\n");
-var DEFAULT_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  "*.conflict-*",
-  "**/*.conflict-*",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  `.obsidian/plugins/${PLUGIN_ID}/local-sync-state.json`,
-  `.obsidian/plugins/${PLUGIN_ID}/*.conflict-*`,
-  ...LEGACY_PLUGIN_IDS2.map((id) => `.obsidian/plugins/${id}/`),
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/"
-].join("\n");
-var GITSYNC_PORT_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/gitsync-port/local-sync-state.json",
-  ".obsidian/plugins/gitsync-port/*.conflict-*",
-  ".obsidian/plugins/obsidian-viewer/",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/"
-].join("\n");
-var PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/"
-].join("\n");
-var DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/community-plugins*.json",
-  ".obsidian/core-plugins*.json",
-  ".obsidian/page-preview.json",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  ".obsidian/plugins/obsidian-git/data.json",
-  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
-  ".obsidian/plugins/*/manifest.conflict-*",
-  "node_modules/"
-].join("\n");
-var PREVIOUS_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  "node_modules/"
-].join("\n");
-var LEGACY_SYNC_IGNORE_PATTERNS = [
-  ".DS_Store",
-  ".obsidian/workspace*.json",
-  ".obsidian/plugins/obsidian-viewer/data.json",
-  ".obsidian/plugins/obsidian-git/data.json",
-  "node_modules/"
-].join("\n");
 var DEFAULT_SETTINGS = {
   language: "auto",
   homeNote: "",
@@ -3397,12 +3327,13 @@ var DEFAULT_SETTINGS = {
   lineHeight: 1.7,
   contentWidth: 900,
   paragraphSpacing: 1,
+  dashboardScrollTop: 0,
   quizProgress: {},
   syncRepository: "kaleido1/Class-Notes",
   syncBranch: "main",
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
-  syncIgnorePatterns: DEFAULT_SYNC_IGNORE_PATTERNS,
+  syncIgnorePatterns: "",
   syncMaxFileSizeMb: 50,
   syncOnStartup: false,
   syncOnSave: false,
@@ -3412,7 +3343,7 @@ var DEFAULT_SETTINGS = {
   lastSyncAt: 0,
   lastSyncSummary: ""
 };
-var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
+var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { ...DEFAULT_SETTINGS };
@@ -3421,6 +3352,8 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     this.syncOnSaveTimer = null;
     this.periodicSyncTimer = null;
     this.periodicSyncKey = "";
+    this.syncQueue = Promise.resolve();
+    this.syncQueueDepth = 0;
     this.syncInFlight = null;
     this.syncStatus = { stage: "idle", message: "" };
     this.githubSync = new GitHubSyncService(this, (status) => {
@@ -3485,24 +3418,24 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       name: this.t("toggleFocus"),
       callback: () => {
         document.body.classList.toggle("ov-focus-reading");
-        new import_obsidian5.Notice(this.t(document.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
+        new import_obsidian6.Notice(this.t(document.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
       }
     });
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
-      if (file instanceof import_obsidian5.TFile && file.extension === "md") void this.recordOpen(file);
+      if (file instanceof import_obsidian6.TFile && file.extension === "md") void this.recordOpen(file);
     }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
-      if (file instanceof import_obsidian5.TFile) this.searchCache.delete(file.path);
+      if (file instanceof import_obsidian6.TFile) this.searchCache.delete(file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.searchCache.delete(file.path);
-      if (file instanceof import_obsidian5.TAbstractFile) void this.removeMissingPath(file.path);
+      if (file instanceof import_obsidian6.TAbstractFile) void this.removeMissingPath(file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.searchCache.delete(oldPath);
-      if (file instanceof import_obsidian5.TAbstractFile) void this.renameTrackedPath(oldPath, file.path);
+      if (file instanceof import_obsidian6.TAbstractFile) void this.renameTrackedPath(oldPath, file.path);
       this.scheduleSyncOnSave();
     }));
     this.registerEvent(this.app.vault.on("create", () => this.scheduleSyncOnSave()));
@@ -3530,6 +3463,8 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
     const currentData = await this.loadData();
     const legacyData = currentData ? null : await this.loadLegacyPluginData();
     const loaded = currentData != null ? currentData : legacyData;
+    const defaultIgnorePatterns = defaultSyncIgnorePatterns(this.app.vault.configDir);
+    const savedIgnorePatterns = typeof (loaded == null ? void 0 : loaded.syncIgnorePatterns) === "string" ? loaded.syncIgnorePatterns : defaultIgnorePatterns;
     const localSyncState = await this.loadLocalSyncState(loaded);
     const loadedDeviceName = (_b = (_a = loaded == null ? void 0 : loaded.syncDeviceName) == null ? void 0 : _a.trim()) != null ? _b : "";
     const syncDeviceNameAuto = typeof (loaded == null ? void 0 : loaded.syncDeviceNameAuto) === "boolean" ? loaded.syncDeviceNameAuto : !loadedDeviceName || AUTO_GENERATED_DEVICE_NAMES.has(loadedDeviceName);
@@ -3539,6 +3474,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       language: isLanguageSetting(loaded == null ? void 0 : loaded.language) ? loaded.language : "auto",
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
+      syncIgnorePatterns: savedIgnorePatterns,
       favorites: Array.isArray(loaded == null ? void 0 : loaded.favorites) ? loaded.favorites : [],
       history: Array.isArray(loaded == null ? void 0 : loaded.history) ? loaded.history : [],
       quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
@@ -3547,8 +3483,8 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       lastSyncSummary: localSyncState.lastSyncSummary
     };
     let migrated = legacyData !== null || (loaded == null ? void 0 : loaded.syncDeviceNameAuto) !== syncDeviceNameAuto || (loaded == null ? void 0 : loaded.syncDeviceName) !== this.settings.syncDeviceName;
-    if ([PORTAL_SYNC_IGNORE_PATTERNS_WITHOUT_GLOBAL_CONFLICTS, GITSYNC_PORT_SYNC_IGNORE_PATTERNS, PLUGIN_SYNC_IGNORE_PATTERNS_WITHOUT_CONFLICTS, DEVICE_LOCAL_PLUGIN_IGNORE_PATTERNS, PREVIOUS_SYNC_IGNORE_PATTERNS, LEGACY_SYNC_IGNORE_PATTERNS].includes(this.settings.syncIgnorePatterns)) {
-      this.settings.syncIgnorePatterns = DEFAULT_SYNC_IGNORE_PATTERNS;
+    if (knownLegacySyncIgnorePatterns(this.app.vault.configDir).includes(this.settings.syncIgnorePatterns)) {
+      this.settings.syncIgnorePatterns = defaultIgnorePatterns;
       migrated = true;
     }
     if (await this.applySyncedViewerStateFromDisk()) migrated = true;
@@ -3587,15 +3523,32 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
   getCurrentDeviceName() {
     return defaultDeviceName();
   }
+  async saveDashboardScrollTop(scrollTop) {
+    this.settings.dashboardScrollTop = Math.max(0, Math.round(scrollTop));
+    await this.savePluginData();
+  }
   async testGitHubConnection() {
     const result = await this.githubSync.testConnection();
     return `${result.repository} \xB7 ${result.branch} \xB7 ${result.commitSha.slice(0, 7)}`;
   }
   async syncNow(showNotice = true, mode = "two-way") {
-    if (this.syncInFlight !== null || this.githubSync.isRunning) {
-      if (showNotice) new import_obsidian5.Notice(this.t("syncAlreadyRunning"));
-      return;
+    const queuedBehindExisting = this.syncQueueDepth > 0;
+    this.syncQueueDepth++;
+    const queuedSync = this.syncQueue.then(
+      () => this.runSync(showNotice, mode),
+      () => this.runSync(showNotice, mode)
+    );
+    this.syncQueue = queuedSync.catch(() => void 0);
+    if (queuedBehindExisting && showNotice) {
+      new import_obsidian6.Notice(this.t("syncQueued"), 5e3);
     }
+    try {
+      await queuedSync;
+    } finally {
+      this.syncQueueDepth--;
+    }
+  }
+  async runSync(showNotice, mode) {
     let releaseLock;
     const lock = new Promise((resolve) => {
       releaseLock = resolve;
@@ -3617,9 +3570,9 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       await this.applySyncedViewerStateFromDisk();
       await this.saveSettings();
       await this.refreshDashboard();
-      if (showNotice) new import_obsidian5.Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
+      if (showNotice) new import_obsidian6.Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
-      if (showNotice) new import_obsidian5.Notice(error instanceof Error ? error.message : String(error), 8e3);
+      if (showNotice) new import_obsidian6.Notice(error instanceof Error ? error.message : String(error), 8e3);
     } finally {
       releaseLock();
       if (this.syncInFlight === lock) this.syncInFlight = null;
@@ -3639,13 +3592,13 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       leaf = (_c = this.app.workspace.getLeftLeaf(false)) != null ? _c : this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
     }
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
   async openHomeNote() {
     const path = this.settings.homeNote;
     const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
-    if (!(file instanceof import_obsidian5.TFile)) {
-      new import_obsidian5.Notice(this.t("missingHomeNote"));
+    if (!(file instanceof import_obsidian6.TFile)) {
+      new import_obsidian6.Notice(this.t("missingHomeNote"));
       return;
     }
     await this.app.workspace.getLeaf(false).openFile(file);
@@ -3658,16 +3611,16 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
   }
   async toggleFavorite(file) {
     const isFavorite = this.isFavorite(file.path);
-    const name = file instanceof import_obsidian5.TFile ? file.basename : file.name || this.t("rootName");
+    const name = file instanceof import_obsidian6.TFile ? file.basename : file.name || this.t("rootName");
     this.settings.favorites = isFavorite ? this.settings.favorites.filter((path) => path !== file.path) : [file.path, ...this.settings.favorites.filter((path) => path !== file.path)];
     await this.saveSettings();
     this.scheduleSyncOnSave();
-    new import_obsidian5.Notice(this.t(isFavorite ? "removedFavorite" : "addedFavorite", { name }));
+    new import_obsidian6.Notice(this.t(isFavorite ? "removedFavorite" : "addedFavorite", { name }));
   }
   async setHomeNote(file) {
     this.settings.homeNote = file.path;
     await this.saveSettings();
-    new import_obsidian5.Notice(this.t("homeSet", { name: file.basename }));
+    new import_obsidian6.Notice(this.t("homeSet", { name: file.basename }));
   }
   async recordOpen(file) {
     this.settings.history = [file.path, ...this.settings.history.filter((path) => path !== file.path)].slice(0, this.settings.maxHistory);
@@ -3682,11 +3635,11 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
   }
   getMarkdownFile(path) {
     const file = this.app.vault.getAbstractFileByPath(path);
-    return file instanceof import_obsidian5.TFile && file.extension === "md" ? file : null;
+    return file instanceof import_obsidian6.TFile && file.extension === "md" ? file : null;
   }
   getFileOrFolder(path) {
     const item = this.app.vault.getAbstractFileByPath(path);
-    return item instanceof import_obsidian5.TFile || item instanceof import_obsidian5.TFolder ? item : null;
+    return item instanceof import_obsidian6.TFile || item instanceof import_obsidian6.TFolder ? item : null;
   }
   async searchFiles(query) {
     const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -3801,7 +3754,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
         history: normalizeTrackedPaths(parsed.history)
       };
     } catch (error) {
-      new import_obsidian5.Notice(this.t("sharedStateReadFailed", { error: error instanceof Error ? error.message : String(error) }), 8e3);
+      new import_obsidian6.Notice(this.t("sharedStateReadFailed", { error: error instanceof Error ? error.message : String(error) }), 8e3);
       return null;
     }
   }
@@ -3828,7 +3781,7 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
       await ensureAdapterParentFolders(this, path);
       await this.app.vault.adapter.write(path, content);
     } catch (error) {
-      new import_obsidian5.Notice(this.t("sharedStateWriteFailed", { error: error instanceof Error ? error.message : String(error) }), 8e3);
+      new import_obsidian6.Notice(this.t("sharedStateWriteFailed", { error: error instanceof Error ? error.message : String(error) }), 8e3);
     }
   }
   async loadLocalSyncState(loaded) {
@@ -3893,13 +3846,87 @@ var GitSyncPortalPlugin = class extends import_obsidian5.Plugin {
   }
 };
 function syncedViewerStatePath(configDir) {
-  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${PLUGIN_ID}/sync-state.json` : SYNCED_VIEWER_STATE_PATH);
+  return (0, import_obsidian6.normalizePath)(`${configDir}/plugins/${PLUGIN_ID}/sync-state.json`);
 }
 function localSyncStatePath(configDir) {
-  return (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json` : LOCAL_SYNC_STATE_PATH);
+  return (0, import_obsidian6.normalizePath)(`${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`);
 }
 function legacyPluginPaths(configDir, filename) {
-  return LEGACY_PLUGIN_IDS2.map((id) => (0, import_obsidian5.normalizePath)(configDir ? `${configDir}/plugins/${id}/${filename}` : `.obsidian/plugins/${id}/${filename}`));
+  return LEGACY_PLUGIN_IDS2.map((id) => (0, import_obsidian6.normalizePath)(`${configDir}/plugins/${id}/${filename}`));
+}
+function defaultSyncIgnorePatterns(configDir) {
+  return [
+    ".DS_Store",
+    "*.conflict-*",
+    "**/*.conflict-*",
+    `${configDir}/workspace*.json`,
+    `${configDir}/page-preview.json`,
+    `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`,
+    `${configDir}/plugins/${PLUGIN_ID}/*.conflict-*`,
+    ...LEGACY_PLUGIN_IDS2.map((id) => `${configDir}/plugins/${id}/`),
+    `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+    `${configDir}/plugins/*/manifest.conflict-*`,
+    "node_modules/"
+  ].join("\n");
+}
+function knownLegacySyncIgnorePatterns(configDir) {
+  return [
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/${PLUGIN_ID}/local-sync-state.json`,
+      `${configDir}/plugins/${PLUGIN_ID}/*.conflict-*`,
+      ...LEGACY_PLUGIN_IDS2.map((id) => `${configDir}/plugins/${id}/`),
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/"
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/gitsync-port/local-sync-state.json`,
+      `${configDir}/plugins/gitsync-port/*.conflict-*`,
+      `${configDir}/plugins/obsidian-viewer/`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/"
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/obsidian-viewer/local-sync-state.json`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/"
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/community-plugins*.json`,
+      `${configDir}/core-plugins*.json`,
+      `${configDir}/page-preview.json`,
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      `${configDir}/plugins/obsidian-git/data.json`,
+      `${configDir}/plugins/obsidian-git/obsidian_askpass.sh`,
+      `${configDir}/plugins/*/manifest.conflict-*`,
+      "node_modules/"
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      "node_modules/"
+    ].join("\n"),
+    [
+      ".DS_Store",
+      `${configDir}/workspace*.json`,
+      `${configDir}/plugins/obsidian-viewer/data.json`,
+      `${configDir}/plugins/obsidian-git/data.json`,
+      "node_modules/"
+    ].join("\n")
+  ];
 }
 async function firstExistingAdapterPath(plugin, paths) {
   for (const path of paths) {
@@ -3913,7 +3940,7 @@ function normalizeTrackedPaths(paths) {
   const output = [];
   for (const path of paths) {
     if (typeof path !== "string") continue;
-    const normalized = (0, import_obsidian5.normalizePath)(path.trim());
+    const normalized = (0, import_obsidian6.normalizePath)(path.trim());
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     output.push(normalized);
@@ -3935,11 +3962,11 @@ async function ensureAdapterParentFolders(plugin, path) {
   }
 }
 function defaultDeviceName() {
-  if (import_obsidian5.Platform.isIosApp) return "iOS";
-  if (import_obsidian5.Platform.isAndroidApp) return "Android";
-  if (import_obsidian5.Platform.isWin) return "Windows";
-  if (import_obsidian5.Platform.isMacOS) return "macOS";
-  if (import_obsidian5.Platform.isLinux) return "Linux";
+  if (import_obsidian6.Platform.isIosApp) return "iOS";
+  if (import_obsidian6.Platform.isAndroidApp) return "Android";
+  if (import_obsidian6.Platform.isWin) return "Windows";
+  if (import_obsidian6.Platform.isMacOS) return "macOS";
+  if (import_obsidian6.Platform.isLinux) return "Linux";
   return "Obsidian";
 }
 var AUTO_GENERATED_DEVICE_NAMES = /* @__PURE__ */ new Set(["Android", "iOS", "Windows", "macOS", "Linux", "Obsidian"]);

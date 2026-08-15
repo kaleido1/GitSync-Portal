@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -30,24 +32,25 @@ jobs:
       - name: Verify release version
         run: node scripts/check-release.mjs "${{ github.ref_name }}"
 
-      - name: Package plugin folder
+      - name: Verify community plugin assets
         run: |
-          mkdir -p release/gitsync-portal
-          cp main.js manifest.json styles.css release/gitsync-portal/
-          cd release
-          zip -r ../gitsync-portal-${{ github.ref_name }}.zip gitsync-portal
+          test -s main.js
+          test -s manifest.json
+          test -s styles.css
 
-      - name: Verify ZIP layout
-        run: |
-          unzip -Z1 gitsync-portal-${{ github.ref_name }}.zip | grep -Fx "gitsync-portal/main.js"
-          unzip -Z1 gitsync-portal-${{ github.ref_name }}.zip | grep -Fx "gitsync-portal/manifest.json"
-          unzip -Z1 gitsync-portal-${{ github.ref_name }}.zip | grep -Fx "gitsync-portal/styles.css"
+      - name: Generate artifact attestations
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${{ github.ref_name }}"
-          main.js manifest.json styles.css gitsync-portal-${{ github.ref_name }}.zip
+          main.js manifest.json styles.css
           --title "GitSync Portal ${{ github.ref_name }}"
           --generate-notes

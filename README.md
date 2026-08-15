@@ -2,7 +2,7 @@
 
 GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
 
-Current version: `2.1.9`
+Current version: `2.1.10`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
@@ -15,8 +15,8 @@ Current version: `2.1.9`
 - Mass-deletion safeguards and conflict-copy loop prevention
 - Upload, download, and deletion propagation
 - Newer-version conflict resolution with preserved `.conflict-…` copies
-- Automatic retries when the remote branch changes during a sync
-- A synchronization mutex that suppresses duplicate manual and automatic attempts while a sync is in progress
+- Automatic retries that wait for the remote branch to settle after a concurrent update
+- A synchronization queue shared by manual and automatic triggers, so requests wait instead of competing
 - Trailing 30-second save-triggered synchronization after the latest favorite or history change
 - Startup, save-triggered, manual, and periodic sync modes
 - Fine-grained GitHub token storage through Obsidian `SecretStorage`
@@ -47,22 +47,26 @@ Change the language under **Obsidian → Settings → GitSync Portal → Languag
 
 ## Installation
 
-Download [gitsync-portal-2.1.9.zip](https://github.com/kaleido1/GitSync-Portal/releases/download/2.1.9/gitsync-portal-2.1.9.zip) and extract it into your vault's plugin directory:
+### Obsidian Community Plugins
 
-```text
-<Vault>/.obsidian/plugins/
-```
+After GitSync Portal is approved in the community directory:
 
-The final layout must be:
+1. Open **Settings → Community plugins** and turn on community plugins.
+2. Select **Browse** and search for **GitSync Portal**.
+3. Select **Install**, then **Enable**.
+4. Open **Settings → GitSync Portal** to configure GitHub synchronization.
+
+Obsidian downloads the matching `main.js`, `manifest.json`, and optional `styles.css` files from the GitHub release automatically. See [INSTALL.md](INSTALL.md) for upgrade and configuration details.
+
+### Manual installation for review or testing
+
+Download the three community-plugin assets from the [2.1.10 release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.10): `main.js`, `manifest.json`, and `styles.css`. Place them in:
 
 ```text
 <Vault>/.obsidian/plugins/gitsync-portal/
-├── main.js
-├── manifest.json
-└── styles.css
 ```
 
-Reload Obsidian, open **Settings → Community plugins**, and enable **GitSync Portal**. See [INSTALL.md](INSTALL.md) for platform-specific instructions.
+Reload Obsidian and enable **GitSync Portal** under **Settings → Community plugins**. Do not use a nested directory or a ZIP archive.
 
 ## Upgrading from an earlier name
 
@@ -94,15 +98,15 @@ The dashboard keeps two-way sync as the primary action and places **Pull only** 
 
 Push-only always publishes locally installed community plugin files when they differ from the remote repository. This makes desktop plugin installs and upgrades available to mobile devices on their next pull-only sync. Explicitly ignored runtime and device-local files remain excluded.
 
-If the remote branch changes during the final commit, GitSync Portal reads the new branch head and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
+If the remote branch changes during the final commit, GitSync Portal waits briefly for the remote update to settle, reads the new branch head, and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
 
-Manual, startup, save-triggered, and periodic sync requests share one lock. A request received while another sync is still saving settings, communicating with GitHub, or applying changes is ignored instead of starting a competing attempt. The lock is released after both successful and failed syncs.
+Manual, startup, save-triggered, and periodic sync requests share one queue. A request received while another sync is still saving settings, communicating with GitHub, or applying changes waits until the current task finishes instead of starting a competing attempt. The queue advances after both successful and failed syncs.
 
 When **Sync on save** is enabled, changes to favorites or reading history restart a trailing 30-second timer. Synchronization starts only after 30 seconds without another tracked-state change; if a sync is still running at that point, the pending synchronization waits until the lock is available.
 
 ## What is synchronized
 
-The sync engine traverses the vault through Obsidian's cross-platform Vault Adapter. It can synchronize:
+The sync engine enumerates the vault locally through Obsidian's cross-platform Vault Adapter so it can compare files against the configured GitHub repository. It only uploads files that are included by the ignore rules below, and it never sends the GitHub token. It can synchronize:
 
 - Markdown notes and attachments
 - `.gitignore`
@@ -185,4 +189,4 @@ This repository was initially based on `MorganTian886/Obsidian_Viewer`. The Git 
 
 ## License
 
-No open-source license has been selected. Rights in the original and subsequent contributions remain with their respective authors. Do not treat the repository contents as open-source licensed until an explicit license is added.
+GitSync Portal is released under the [MIT License](LICENSE).
