@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import Module from "node:module";
 import { buildSync } from "esbuild";
 
+// The production plugin runs in Obsidian's browser context. Provide the small
+// Window surface exercised by these Node-based synchronization tests.
+globalThis.window = globalThis;
+
 const output = buildSync({
   entryPoints: ["src/github-sync.ts"],
   bundle: true,

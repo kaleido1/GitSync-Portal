@@ -1,6 +1,6 @@
 {
   "name": "gitsync-portal",
-  "version": "2.1.10",
+  "version": "2.1.11",
   "private": true,
   "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "Kai Liu",
@@ -13,16 +13,25 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "check": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint main.ts src",
+    "lint:css": "stylelint styles.css",
+    "lint:review": "npm run lint && npm run lint:css",
     "check:release": "node scripts/check-release.mjs",
     "test:sync": "node scripts/test-sync.mjs",
+    "test:settings": "node scripts/test-settings.mjs",
     "test:i18n": "node scripts/test-i18n.mjs",
-    "test": "npm run build && npm run check:release && npm run test:sync && npm run test:i18n"
+    "test": "npm run lint:review && npm run build && npm run check:release && npm run test:sync && npm run test:settings && npm run test:i18n"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
     "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.1",
+    "globals": "^17.11.0",
     "obsidian": "^1.11.4",
+    "stylelint": "^16.26.1",
     "tslib": "^2.8.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.67.0"
   }
 }

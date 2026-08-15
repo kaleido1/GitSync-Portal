@@ -123,7 +123,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   private getScrollContainers(): HTMLElement[] {
     const containers: HTMLElement[] = [];
     let element: HTMLElement | null = this.contentEl;
-    while (element && element !== document.body) {
+    while (element && element !== element.ownerDocument.body) {
       const overflowY = window.getComputedStyle(element).overflowY;
       if (element === this.contentEl || overflowY === "auto" || overflowY === "scroll") containers.push(element);
       if (element.classList.contains("workspace-drawer")) break;
@@ -197,7 +197,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   private async renderHome(root: HTMLElement): Promise<void> {
     const home = this.plugin.getMarkdownFile(this.plugin.settings.homeNote);
     const hero = root.createDiv({ cls: "ov-home-card" });
-    hero.createEl("div", { text: this.plugin.t("homeNoteCard"), cls: "ov-eyebrow" });
+    hero.createDiv({ text: this.plugin.t("homeNoteCard"), cls: "ov-eyebrow" });
     hero.createEl("h3", { text: home?.basename ?? this.plugin.t("notSet") });
     hero.createEl("p", {
       text: home ? home.path : this.plugin.t("homeNoteHint"),
@@ -297,7 +297,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   }
 
   private captureSearchFocus(root: HTMLElement): { start: number; end: number } | null {
-    const activeElement = document.activeElement;
+    const activeElement = root.ownerDocument.activeElement;
     if (!(activeElement instanceof HTMLInputElement) || !root.contains(activeElement) || !activeElement.matches(".ov-search-box input")) {
       return null;
     }

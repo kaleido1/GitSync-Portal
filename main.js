@@ -130,7 +130,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   getScrollContainers() {
     const containers = [];
     let element = this.contentEl;
-    while (element && element !== document.body) {
+    while (element && element !== element.ownerDocument.body) {
       const overflowY = window.getComputedStyle(element).overflowY;
       if (element === this.contentEl || overflowY === "auto" || overflowY === "scroll") containers.push(element);
       if (element.classList.contains("workspace-drawer")) break;
@@ -198,7 +198,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     var _a;
     const home = this.plugin.getMarkdownFile(this.plugin.settings.homeNote);
     const hero = root.createDiv({ cls: "ov-home-card" });
-    hero.createEl("div", { text: this.plugin.t("homeNoteCard"), cls: "ov-eyebrow" });
+    hero.createDiv({ text: this.plugin.t("homeNoteCard"), cls: "ov-eyebrow" });
     hero.createEl("h3", { text: (_a = home == null ? void 0 : home.basename) != null ? _a : this.plugin.t("notSet") });
     hero.createEl("p", {
       text: home ? home.path : this.plugin.t("homeNoteHint"),
@@ -290,7 +290,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
   }
   captureSearchFocus(root) {
     var _a, _b;
-    const activeElement = document.activeElement;
+    const activeElement = root.ownerDocument.activeElement;
     if (!(activeElement instanceof HTMLInputElement) || !root.contains(activeElement) || !activeElement.matches(".ov-search-box input")) {
       return null;
     }
@@ -566,144 +566,258 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
   }
-  display() {
-    const { containerEl } = this;
+  getSettingDefinitions() {
     const t = (key, values) => this.plugin.t(key, values);
-    containerEl.empty();
-    new import_obsidian2.Setting(containerEl).setName(t("appName")).setHeading();
-    new import_obsidian2.Setting(containerEl).setName(t("language")).setDesc(t("languageDescription")).addDropdown((dropdown) => {
-      Object.entries(this.plugin.getLanguageOptions()).forEach(([value, label]) => dropdown.addOption(value, label));
-      dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {
-        this.plugin.settings.language = value;
-        await this.plugin.saveSettings();
-        this.display();
-      });
-    });
-    containerEl.createEl("p", { text: t("settingsIntro"), cls: "setting-item-description" });
-    new import_obsidian2.Setting(containerEl).setName(t("syncSection")).setHeading();
-    containerEl.createEl("p", { text: t("syncDescription"), cls: "setting-item-description" });
-    new import_obsidian2.Setting(containerEl).setName(t("githubToken")).setDesc(t("githubTokenDescription")).addText((text) => {
-      text.inputEl.type = "password";
-      text.setPlaceholder(this.plugin.getGitHubToken() ? t("tokenSavedPlaceholder") : "github_pat_\u2026");
-      text.onChange((value) => {
-        if (value.trim()) this.plugin.setGitHubToken(value);
-      });
-    }).addButton((button) => button.setButtonText(t("clearToken")).setDestructive().onClick(() => {
-      this.plugin.setGitHubToken("");
-      this.display();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("repository")).setDesc(t("repositoryDescription")).addText((text) => text.setPlaceholder("owner/repository").setValue(this.plugin.settings.syncRepository).onChange(async (value) => {
-      this.plugin.settings.syncRepository = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("branch")).setDesc(t("branchDescription")).addText((text) => text.setPlaceholder("main").setValue(this.plugin.settings.syncBranch).onChange(async (value) => {
-      this.plugin.settings.syncBranch = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("autoDevice")).setDesc(t("autoDeviceDescription", { device: this.plugin.getCurrentDeviceName() })).addToggle((toggle) => toggle.setValue(this.plugin.settings.syncDeviceNameAuto).onChange(async (value) => {
-      this.plugin.settings.syncDeviceNameAuto = value;
-      if (value) this.plugin.settings.syncDeviceName = this.plugin.getCurrentDeviceName();
-      await this.plugin.saveSettings();
-      this.display();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("deviceName")).setDesc(t(this.plugin.settings.syncDeviceNameAuto ? "deviceNameAutoDescription" : "deviceNameManualDescription")).addText((text) => text.setDisabled(this.plugin.settings.syncDeviceNameAuto).setValue(this.plugin.settings.syncDeviceName).onChange(async (value) => {
-      this.plugin.settings.syncDeviceName = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("testAndSync")).setDesc(this.syncDescription()).addButton((button) => button.setButtonText(t("testConnection")).onClick(async () => {
-      button.setDisabled(true).setButtonText(t("testing"));
-      try {
-        new import_obsidian2.Notice(t("connectionSuccess", { details: await this.plugin.testGitHubConnection() }));
-      } catch (error) {
-        new import_obsidian2.Notice(error instanceof Error ? error.message : t("connectionFailed"), 8e3);
-      } finally {
-        button.setDisabled(false).setButtonText(t("testConnection"));
-      }
-    })).addButton((button) => button.setCta().setButtonText(t("syncNowLong")).onClick(async () => {
-      button.setDisabled(true).setButtonText(t("syncing"));
-      await this.plugin.syncNow();
-      button.setDisabled(false).setButtonText(t("syncNowLong"));
-      this.display();
-    }));
-    this.addToggle("syncOnStartup", "syncOnStartupDescription", this.plugin.settings.syncOnStartup, (value) => {
-      this.plugin.settings.syncOnStartup = value;
-    });
-    this.addToggle("syncOnSave", "syncOnSaveDescription", this.plugin.settings.syncOnSave, (value) => {
-      this.plugin.settings.syncOnSave = value;
-    });
-    this.addToggle("periodicSync", "periodicSyncDescription", this.plugin.settings.syncPeriodically, (value) => {
-      this.plugin.settings.syncPeriodically = value;
-    });
-    this.addNumber("syncInterval", "syncIntervalDescription", this.plugin.settings.syncIntervalMinutes, 5, 10080, (value) => {
-      this.plugin.settings.syncIntervalMinutes = value;
-    });
-    this.addNumber("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => {
-      this.plugin.settings.syncMaxFileSizeMb = value;
-    });
-    new import_obsidian2.Setting(containerEl).setName(t("ignoredPaths")).setDesc(t("ignoredPathsDescription")).addTextArea((text) => text.setPlaceholder(`.DS_Store
+    return [
+      {
+        type: "group",
+        heading: t("appName"),
+        items: [
+          {
+            name: t("language"),
+            desc: t("languageDescription"),
+            render: (setting) => {
+              setting.addDropdown((dropdown) => {
+                Object.entries(this.plugin.getLanguageOptions()).forEach(([value, label]) => {
+                  dropdown.addOption(value, label);
+                });
+                dropdown.setValue(this.plugin.settings.language).onChange(async (value) => {
+                  this.plugin.settings.language = value;
+                  await this.plugin.saveSettings();
+                  this.update();
+                });
+              });
+            }
+          },
+          { name: t("settingsIntro") }
+        ]
+      },
+      {
+        type: "group",
+        heading: t("syncSection"),
+        items: [
+          { name: t("syncDescription") },
+          {
+            name: t("githubToken"),
+            desc: t("githubTokenDescription"),
+            render: (setting) => {
+              setting.addText((text) => {
+                text.inputEl.type = "password";
+                text.setPlaceholder(this.plugin.getGitHubToken() ? t("tokenSavedPlaceholder") : "github_pat_\u2026");
+                text.onChange((value) => {
+                  if (value.trim()) this.plugin.setGitHubToken(value);
+                });
+              }).addButton((button) => button.setButtonText(t("clearToken")).setDestructive().onClick(() => {
+                this.plugin.setGitHubToken("");
+                this.update();
+              }));
+            }
+          },
+          {
+            name: t("repository"),
+            desc: t("repositoryDescription"),
+            render: (setting) => {
+              setting.addText((text) => text.setPlaceholder("Owner/repository").setValue(this.plugin.settings.syncRepository).onChange(async (value) => {
+                this.plugin.settings.syncRepository = value.trim();
+                await this.plugin.saveSettings();
+              }));
+            }
+          },
+          {
+            name: t("branch"),
+            desc: t("branchDescription"),
+            render: (setting) => {
+              setting.addText((text) => text.setPlaceholder("Main").setValue(this.plugin.settings.syncBranch).onChange(async (value) => {
+                this.plugin.settings.syncBranch = value.trim();
+                await this.plugin.saveSettings();
+              }));
+            }
+          },
+          {
+            name: t("autoDevice"),
+            desc: t("autoDeviceDescription", { device: this.plugin.getCurrentDeviceName() }),
+            render: (setting) => {
+              setting.addToggle((toggle) => toggle.setValue(this.plugin.settings.syncDeviceNameAuto).onChange(async (value) => {
+                this.plugin.settings.syncDeviceNameAuto = value;
+                if (value) this.plugin.settings.syncDeviceName = this.plugin.getCurrentDeviceName();
+                await this.plugin.saveSettings();
+                this.update();
+              }));
+            }
+          },
+          {
+            name: t("deviceName"),
+            desc: t(this.plugin.settings.syncDeviceNameAuto ? "deviceNameAutoDescription" : "deviceNameManualDescription"),
+            render: (setting) => {
+              setting.addText((text) => text.setDisabled(this.plugin.settings.syncDeviceNameAuto).setValue(this.plugin.settings.syncDeviceName).onChange(async (value) => {
+                this.plugin.settings.syncDeviceName = value.trim();
+                await this.plugin.saveSettings();
+              }));
+            }
+          },
+          {
+            name: t("testAndSync"),
+            desc: this.syncDescription(),
+            render: (setting) => {
+              setting.addButton((button) => button.setButtonText(t("testConnection")).onClick(async () => {
+                button.setDisabled(true).setButtonText(t("testing"));
+                try {
+                  new import_obsidian2.Notice(t("connectionSuccess", { details: await this.plugin.testGitHubConnection() }));
+                } catch (error) {
+                  new import_obsidian2.Notice(error instanceof Error ? error.message : t("connectionFailed"), 8e3);
+                } finally {
+                  button.setDisabled(false).setButtonText(t("testConnection"));
+                }
+              })).addButton((button) => button.setCta().setButtonText(t("syncNowLong")).onClick(async () => {
+                button.setDisabled(true).setButtonText(t("syncing"));
+                await this.plugin.syncNow();
+                button.setDisabled(false).setButtonText(t("syncNowLong"));
+                this.update();
+              }));
+            }
+          },
+          this.toggleDefinition("syncOnStartup", "syncOnStartupDescription", this.plugin.settings.syncOnStartup, (value) => {
+            this.plugin.settings.syncOnStartup = value;
+          }),
+          this.toggleDefinition("syncOnSave", "syncOnSaveDescription", this.plugin.settings.syncOnSave, (value) => {
+            this.plugin.settings.syncOnSave = value;
+          }),
+          this.toggleDefinition("periodicSync", "periodicSyncDescription", this.plugin.settings.syncPeriodically, (value) => {
+            this.plugin.settings.syncPeriodically = value;
+          }),
+          this.numberDefinition("syncInterval", "syncIntervalDescription", this.plugin.settings.syncIntervalMinutes, 5, 10080, (value) => {
+            this.plugin.settings.syncIntervalMinutes = value;
+          }),
+          this.numberDefinition("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => {
+            this.plugin.settings.syncMaxFileSizeMb = value;
+          }),
+          {
+            name: t("ignoredPaths"),
+            desc: t("ignoredPathsDescription"),
+            render: (setting) => {
+              setting.addTextArea((text) => text.setPlaceholder(`.DS_Store
 ${this.app.vault.configDir}/workspace*.json`).setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
-      this.plugin.settings.syncIgnorePatterns = value;
-      await this.plugin.saveSettings();
-    }));
-    containerEl.createEl("p", { text: t("obsidianGitWarning"), cls: "ov-setting-warning" });
-    new import_obsidian2.Setting(containerEl).setName(t("homeNote")).setDesc(t("homeNoteDescription")).addText((text) => text.setPlaceholder(t("homeNotePlaceholder")).setValue(this.plugin.settings.homeNote).onChange(async (value) => {
-      this.plugin.settings.homeNote = value.trim();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("useCurrentNote")).setDesc(t("useCurrentNoteDescription")).addButton((button) => button.setButtonText(t("setAsHome")).onClick(async () => {
-      const file = this.app.workspace.getActiveFile();
-      if (file instanceof import_obsidian2.TFile) await this.plugin.setHomeNote(file);
-    }));
-    this.addToggle("openDashboardOnStartup", "openDashboardOnStartupDescription", this.plugin.settings.openDashboardOnStartup, (value) => {
-      this.plugin.settings.openDashboardOnStartup = value;
-    });
-    this.addNumber("historyLimit", "historyLimitDescription", this.plugin.settings.maxHistory, 10, 500, (value) => {
-      this.plugin.settings.maxHistory = value;
-      this.plugin.settings.history = this.plugin.settings.history.slice(0, value);
-    });
-    new import_obsidian2.Setting(containerEl).setName(t("readingDisplay")).setHeading();
-    this.addSlider("bodyFontSize", "14\u201324 px", 14, 24, 1, this.plugin.settings.fontSize, (value) => {
-      this.plugin.settings.fontSize = value;
-    });
-    this.addSlider("bodyLineHeight", "1.2\u20132.2", 1.2, 2.2, 0.1, this.plugin.settings.lineHeight, (value) => {
-      this.plugin.settings.lineHeight = value;
-    });
-    this.addSlider("contentMaxWidth", "600\u20131200 px", 600, 1200, 50, this.plugin.settings.contentWidth, (value) => {
-      this.plugin.settings.contentWidth = value;
-    });
-    this.addSlider("paragraphSpacing", "0.5\u20132.0 em", 0.5, 2, 0.1, this.plugin.settings.paragraphSpacing, (value) => {
-      this.plugin.settings.paragraphSpacing = value;
-    });
-    new import_obsidian2.Setting(containerEl).setName(t("dataManagement")).setHeading();
-    new import_obsidian2.Setting(containerEl).setName(t("clearHistory")).setDesc(t("clearHistoryDescription", { count: this.plugin.settings.history.length })).addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
-      await this.plugin.clearHistory();
-      this.display();
-    }));
-    new import_obsidian2.Setting(containerEl).setName(t("clearQuizProgress")).setDesc(t("clearQuizProgressDescription")).addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
-      this.plugin.settings.quizProgress = {};
-      await this.plugin.saveSettings();
-      this.display();
-    }));
+                this.plugin.settings.syncIgnorePatterns = value;
+                await this.plugin.saveSettings();
+              }));
+            }
+          },
+          {
+            name: t("obsidianGitWarning"),
+            render: (setting) => {
+              setting.setClass("ov-setting-warning");
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: t("homeNote"),
+        items: [
+          {
+            name: t("homeNote"),
+            desc: t("homeNoteDescription"),
+            render: (setting) => {
+              setting.addText((text) => text.setPlaceholder(t("homeNotePlaceholder")).setValue(this.plugin.settings.homeNote).onChange(async (value) => {
+                this.plugin.settings.homeNote = value.trim();
+                await this.plugin.saveSettings();
+              }));
+            }
+          },
+          {
+            name: t("useCurrentNote"),
+            desc: t("useCurrentNoteDescription"),
+            render: (setting) => {
+              setting.addButton((button) => button.setButtonText(t("setAsHome")).onClick(async () => {
+                const file = this.app.workspace.getActiveFile();
+                if (file instanceof import_obsidian2.TFile) await this.plugin.setHomeNote(file);
+              }));
+            }
+          },
+          this.toggleDefinition("openDashboardOnStartup", "openDashboardOnStartupDescription", this.plugin.settings.openDashboardOnStartup, (value) => {
+            this.plugin.settings.openDashboardOnStartup = value;
+          }),
+          this.numberDefinition("historyLimit", "historyLimitDescription", this.plugin.settings.maxHistory, 10, 500, (value) => {
+            this.plugin.settings.maxHistory = value;
+            this.plugin.settings.history = this.plugin.settings.history.slice(0, value);
+          })
+        ]
+      },
+      {
+        type: "group",
+        heading: t("readingDisplay"),
+        items: [
+          this.sliderDefinition("bodyFontSize", "14\u201324 px", 14, 24, 1, this.plugin.settings.fontSize, (value) => {
+            this.plugin.settings.fontSize = value;
+          }),
+          this.sliderDefinition("bodyLineHeight", "1.2\u20132.2", 1.2, 2.2, 0.1, this.plugin.settings.lineHeight, (value) => {
+            this.plugin.settings.lineHeight = value;
+          }),
+          this.sliderDefinition("contentMaxWidth", "600\u20131200 px", 600, 1200, 50, this.plugin.settings.contentWidth, (value) => {
+            this.plugin.settings.contentWidth = value;
+          }),
+          this.sliderDefinition("paragraphSpacing", "0.5\u20132.0 em", 0.5, 2, 0.1, this.plugin.settings.paragraphSpacing, (value) => {
+            this.plugin.settings.paragraphSpacing = value;
+          })
+        ]
+      },
+      {
+        type: "group",
+        heading: t("dataManagement"),
+        items: [
+          {
+            name: t("clearHistory"),
+            desc: t("clearHistoryDescription", { count: this.plugin.settings.history.length }),
+            render: (setting) => {
+              setting.addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
+                await this.plugin.clearHistory();
+                this.update();
+              }));
+            }
+          },
+          {
+            name: t("clearQuizProgress"),
+            desc: t("clearQuizProgressDescription"),
+            render: (setting) => {
+              setting.addButton((button) => button.setDestructive().setButtonText(t("clear")).onClick(async () => {
+                this.plugin.settings.quizProgress = {};
+                await this.plugin.saveSettings();
+                this.update();
+              }));
+            }
+          }
+        ]
+      }
+    ];
   }
-  addToggle(name, description, value, assign) {
-    new import_obsidian2.Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(this.plugin.t(description)).addToggle((toggle) => toggle.setValue(value).onChange(async (next) => {
-      assign(next);
-      await this.plugin.saveSettings();
-    }));
+  toggleDefinition(name, description, value, assign) {
+    return this.renderDefinition(name, this.plugin.t(description), (setting) => {
+      setting.addToggle((toggle) => toggle.setValue(value).onChange(async (next) => {
+        assign(next);
+        await this.plugin.saveSettings();
+      }));
+    });
   }
-  addNumber(name, description, value, min, max, assign) {
-    new import_obsidian2.Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(this.plugin.t(description)).addText((text) => text.setValue(String(value)).onChange(async (raw) => {
-      const parsed = Number.parseInt(raw, 10);
-      if (!Number.isFinite(parsed)) return;
-      assign(Math.min(max, Math.max(min, parsed)));
-      await this.plugin.saveSettings();
-    }));
+  numberDefinition(name, description, value, min, max, assign) {
+    return this.renderDefinition(name, this.plugin.t(description), (setting) => {
+      setting.addText((text) => text.setValue(String(value)).onChange(async (raw) => {
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed)) return;
+        assign(Math.min(max, Math.max(min, parsed)));
+        await this.plugin.saveSettings();
+      }));
+    });
   }
-  addSlider(name, description, min, max, step, value, assign) {
-    new import_obsidian2.Setting(this.containerEl).setName(this.plugin.t(name)).setDesc(description).addSlider((slider) => slider.setLimits(min, max, step).setValue(value).onChange(async (next) => {
-      assign(next);
-      await this.plugin.saveSettings();
-    }));
+  sliderDefinition(name, description, min, max, step, value, assign) {
+    return this.renderDefinition(name, description, (setting) => {
+      setting.addSlider((slider) => slider.setLimits(min, max, step).setValue(value).onChange(async (next) => {
+        assign(next);
+        await this.plugin.saveSettings();
+      }));
+    });
+  }
+  renderDefinition(name, desc, render) {
+    return { name: this.plugin.t(name), desc, render };
   }
   syncDescription() {
     return this.plugin.t("lastSync", {
@@ -866,7 +980,7 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
         const label = section.createEl("label", { cls: "ov-quiz-option" });
         const input = label.createEl("input", { type: "radio", attr: { name: `${question.id}-${this.context.sourcePath}` } });
         input.value = option.id;
-        input.checked = String(answer != null ? answer : "") === String(option.id);
+        input.checked = (typeof answer === "string" ? answer : "") === option.id;
         input.disabled = disabled;
         label.createSpan({ text: option.text });
         input.addEventListener("change", () => {
@@ -1024,7 +1138,7 @@ function scoreQuestion(question, answer) {
   var _a, _b, _c, _d, _e, _f;
   let ratio = 0;
   if (question.type === "multiple-choice" || question.type === "true-false") {
-    ratio = String(answer) === String(question.correctAnswer) ? 1 : 0;
+    ratio = (typeof answer === "string" ? answer : "") === String(question.correctAnswer) ? 1 : 0;
   } else if (question.type === "multiple-select") {
     const actual = new Set(asStringArray(answer));
     const correct = new Set(((_a = question.correctAnswers) != null ? _a : []).map(String));
@@ -1036,7 +1150,7 @@ function scoreQuestion(question, answer) {
       ratio = actual.size === correct.size && [...actual].every((value) => correct.has(value)) ? 1 : 0;
     }
   } else if (question.type === "short-text") {
-    const actual = String(answer != null ? answer : "").trim();
+    const actual = typeof answer === "string" ? answer.trim() : "";
     ratio = ((_b = question.acceptedAnswers) != null ? _b : []).some((candidate) => {
       const expected = String(candidate).trim();
       return question.caseSensitive ? actual === expected : actual.toLocaleLowerCase() === expected.toLocaleLowerCase();
@@ -1806,8 +1920,7 @@ var EmptyRepositoryError = class extends Error {
 };
 function sleep(milliseconds) {
   return new Promise((resolve) => {
-    if (typeof window === "undefined") setTimeout(resolve, milliseconds);
-    else window.activeWindow.setTimeout(resolve, milliseconds);
+    window.setTimeout(resolve, milliseconds);
   });
 }
 async function mapWithConcurrency(items, limit, mapper) {
@@ -3420,8 +3533,8 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       id: "toggle-focus-reading",
       name: this.t("toggleFocus"),
       callback: () => {
-        document.body.classList.toggle("ov-focus-reading");
-        new import_obsidian6.Notice(this.t(document.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
+        activeDocument.body.classList.toggle("ov-focus-reading");
+        new import_obsidian6.Notice(this.t(activeDocument.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
       }
     });
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
@@ -3455,8 +3568,8 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     });
   }
   onunload() {
-    document.body.classList.remove("ov-reader-enabled", "ov-focus-reading");
-    ["--ov-reader-font-size", "--ov-reader-line-height", "--ov-reader-width", "--ov-reader-paragraph-spacing"].forEach((name) => document.body.style.removeProperty(name));
+    activeDocument.body.classList.remove("ov-reader-enabled", "ov-focus-reading");
+    ["--ov-reader-font-size", "--ov-reader-line-height", "--ov-reader-width", "--ov-reader-paragraph-spacing"].forEach((name) => activeDocument.body.style.removeProperty(name));
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     if (this.periodicSyncTimer !== null) window.clearInterval(this.periodicSyncTimer);
@@ -3582,11 +3695,11 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     }
   }
   applyReaderSettings() {
-    document.body.classList.add("ov-reader-enabled");
-    document.body.style.setProperty("--ov-reader-font-size", `${this.settings.fontSize}px`);
-    document.body.style.setProperty("--ov-reader-line-height", String(this.settings.lineHeight));
-    document.body.style.setProperty("--ov-reader-width", `${this.settings.contentWidth}px`);
-    document.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
+    activeDocument.body.classList.add("ov-reader-enabled");
+    activeDocument.body.style.setProperty("--ov-reader-font-size", `${this.settings.fontSize}px`);
+    activeDocument.body.style.setProperty("--ov-reader-line-height", String(this.settings.lineHeight));
+    activeDocument.body.style.setProperty("--ov-reader-width", `${this.settings.contentWidth}px`);
+    activeDocument.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
   }
   async activateDashboard() {
     var _a, _b, _c;

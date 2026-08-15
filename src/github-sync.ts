@@ -686,7 +686,7 @@ export class GitHubSyncService {
     if (!updated.includes(this.plugin.manifest.id)) updated.push(this.plugin.manifest.id);
     if (updated.length === enabled.length && updated.every((id, index) => id === enabled[index])) return null;
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}\n`);
-    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
     if (this.isIgnored(path)) return null;
     return { path, sha: await gitBlobSha(data), mtime: Date.now() };
@@ -953,8 +953,7 @@ class EmptyRepositoryError extends Error {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof window === "undefined") setTimeout(resolve, milliseconds);
-    else window.activeWindow.setTimeout(resolve, milliseconds);
+    window.setTimeout(resolve, milliseconds);
   });
 }
 

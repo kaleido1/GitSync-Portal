@@ -224,7 +224,7 @@ class QuizRenderChild extends MarkdownRenderChild {
         const label = section.createEl("label", { cls: "ov-quiz-option" });
         const input = label.createEl("input", { type: "radio", attr: { name: `${question.id}-${this.context.sourcePath}` } });
         input.value = option.id;
-        input.checked = String(answer ?? "") === String(option.id);
+        input.checked = (typeof answer === "string" ? answer : "") === option.id;
         input.disabled = disabled;
         label.createSpan({ text: option.text });
         input.addEventListener("change", () => {
@@ -375,7 +375,7 @@ function formatCorrectAnswer(question: QuizQuestion): string {
 function scoreQuestion(question: QuizQuestion, answer: Answer): Score {
   let ratio = 0;
   if (question.type === "multiple-choice" || question.type === "true-false") {
-    ratio = String(answer) === String(question.correctAnswer) ? 1 : 0;
+    ratio = (typeof answer === "string" ? answer : "") === String(question.correctAnswer) ? 1 : 0;
   } else if (question.type === "multiple-select") {
     const actual = new Set(asStringArray(answer));
     const correct = new Set((question.correctAnswers ?? []).map(String));
@@ -387,7 +387,7 @@ function scoreQuestion(question: QuizQuestion, answer: Answer): Score {
       ratio = actual.size === correct.size && [...actual].every((value) => correct.has(value)) ? 1 : 0;
     }
   } else if (question.type === "short-text") {
-    const actual = String(answer ?? "").trim();
+    const actual = typeof answer === "string" ? answer.trim() : "";
     ratio = (question.acceptedAnswers ?? []).some((candidate) => {
       const expected = String(candidate).trim();
       return question.caseSensitive ? actual === expected : actual.toLocaleLowerCase() === expected.toLocaleLowerCase();

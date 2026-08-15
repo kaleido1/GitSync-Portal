@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.1.11] - 2026-08-16
+
+### Added
+
+- Added the official Obsidian TypeScript review rules and a CSS `!important` guard to the local test suite.
+- Added a structural test for all searchable declarative settings.
+
+### Changed
+
+- Raised the minimum Obsidian version to 1.13.0 and migrated the settings page to the searchable declarative settings API.
+- Replaced bare document and timer references with popout-window-safe equivalents.
+- Replaced `!important` overrides with scoped selector specificity.
+
+### Fixed
+
+- Removed unsafe quiz answer coercions and unnecessary typed-array assertions reported by the community review.
+- Cleared the source-code and CSS findings reported against 2.1.10.
+
 ## [2.1.10] - 2026-08-16
 
 ### Added

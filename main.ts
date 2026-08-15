@@ -159,8 +159,8 @@ export default class GitSyncPortalPlugin extends Plugin {
       id: "toggle-focus-reading",
       name: this.t("toggleFocus"),
       callback: () => {
-        document.body.classList.toggle("ov-focus-reading");
-        new Notice(this.t(document.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
+        activeDocument.body.classList.toggle("ov-focus-reading");
+        new Notice(this.t(activeDocument.body.classList.contains("ov-focus-reading") ? "focusEnabled" : "focusDisabled"));
       },
     });
 
@@ -198,9 +198,9 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   onunload(): void {
-    document.body.classList.remove("ov-reader-enabled", "ov-focus-reading");
+    activeDocument.body.classList.remove("ov-reader-enabled", "ov-focus-reading");
     ["--ov-reader-font-size", "--ov-reader-line-height", "--ov-reader-width", "--ov-reader-paragraph-spacing"]
-      .forEach((name) => document.body.style.removeProperty(name));
+      .forEach((name) => activeDocument.body.style.removeProperty(name));
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     if (this.periodicSyncTimer !== null) window.clearInterval(this.periodicSyncTimer);
@@ -346,11 +346,11 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   applyReaderSettings(): void {
-    document.body.classList.add("ov-reader-enabled");
-    document.body.style.setProperty("--ov-reader-font-size", `${this.settings.fontSize}px`);
-    document.body.style.setProperty("--ov-reader-line-height", String(this.settings.lineHeight));
-    document.body.style.setProperty("--ov-reader-width", `${this.settings.contentWidth}px`);
-    document.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
+    activeDocument.body.classList.add("ov-reader-enabled");
+    activeDocument.body.style.setProperty("--ov-reader-font-size", `${this.settings.fontSize}px`);
+    activeDocument.body.style.setProperty("--ov-reader-line-height", String(this.settings.lineHeight));
+    activeDocument.body.style.setProperty("--ov-reader-width", `${this.settings.contentWidth}px`);
+    activeDocument.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
   }
 
   async activateDashboard(): Promise<void> {
