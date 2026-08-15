@@ -761,7 +761,10 @@ var QuizRenderChild = class extends import_obsidian3.MarkdownRenderChild {
     const record = asRecord(parsed);
     const definitions = await this.readDefinitions();
     const id = typeof (record == null ? void 0 : record.id) === "string" ? record.id : null;
-    if (id && definitions.has(id)) return definitions.get(id);
+    if (id) {
+      const definition = definitions.get(id);
+      if (definition) return definition;
+    }
     if ((record == null ? void 0 : record.source) === "current") {
       const first = definitions.values().next().value;
       if (first) return first;
