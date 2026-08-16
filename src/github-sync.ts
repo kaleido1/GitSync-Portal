@@ -1,3 +1,4 @@
+import ignore from "ignore";
 import {
   TFile,
   arrayBufferToBase64,
@@ -745,20 +746,11 @@ export class GitHubSyncService {
 
     const patterns = this.activeIgnoreRules ?? parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
 
-    let ignored = false;
-    for (const pattern of patterns) {
-      if (pattern.startsWith("!")) {
-        if (ignored && matchesPattern(normalized, pattern.slice(1))) {
-          ignored = false;
-        }
-      } else {
-        if (matchesPattern(normalized, pattern)) {
-          ignored = true;
-        }
-      }
+    if (patterns.length > 0) {
+      const ig = ignore().add(patterns);
+      return ig.ignores(normalized);
     }
-
-    return ignored;
+    return false;
   }
 
   private ensureFileSize(path: string, bytes: number): void {
@@ -958,24 +950,6 @@ export function parseRepository(value: string, invalidMessage = "Repository must
 function parseIgnorePatterns(value?: string): string[] {
   if (!value) return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
-}
-
-function matchesPattern(path: string, pattern: string): boolean {
-  const normalized = normalizePath(pattern.replace(/^\//, ""));
-  if (normalized.endsWith("/")) {
-    const directory = normalized.slice(0, -1);
-    return normalized.indexOf("/") !== -1
-      ? path === directory || path.startsWith(normalized)
-      : path.split("/").indexOf(directory) !== -1;
-  }
-  if (normalized.indexOf("*") === -1 && normalized.indexOf("?") === -1) {
-    return normalized.indexOf("/") !== -1
-      ? path === normalized || path.startsWith(`${normalized}/`)
-      : path.split("/").indexOf(normalized) !== -1;
-  }
-  const doubleStarToken = "__GITSYNC_DOUBLE_STAR__";
-  const escaped = normalized.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, doubleStarToken).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(new RegExp(doubleStarToken, "g"), ".*");
-  return new RegExp(`^${escaped}$`).test(path);
 }
 
 function sanitizeSegment(value: string): string {
