@@ -692,6 +692,9 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
           this.numberDefinition("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => {
             this.plugin.settings.syncMaxFileSizeMb = value;
           }),
+          this.toggleDefinition("useGitignore", "useGitignoreDescription", this.plugin.settings.syncUseGitignore, (value) => {
+            this.plugin.settings.syncUseGitignore = value;
+          }),
           {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
@@ -1223,11 +1226,37 @@ var GitHubSyncService = class {
     this.plugin = plugin;
     this.onStatus = onStatus;
     this.running = false;
+    this.activeIgnoreRules = null;
   }
   get isRunning() {
     return this.running;
   }
+  async loadIgnoreRules() {
+    const configured = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    if (!this.plugin.settings.syncUseGitignore) {
+      this.activeIgnoreRules = configured;
+      return;
+    }
+    try {
+      const gitignoreFile = this.plugin.app.vault.getFileByPath(".gitignore");
+      if (gitignoreFile) {
+        const gitignoreContent = await this.plugin.app.vault.read(gitignoreFile);
+        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
+        this.activeIgnoreRules = [...gitignoreRules, ...configured];
+        return;
+      }
+      if (await this.plugin.app.vault.adapter.exists(".gitignore")) {
+        const gitignoreContent = await this.plugin.app.vault.adapter.read(".gitignore");
+        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
+        this.activeIgnoreRules = [...gitignoreRules, ...configured];
+        return;
+      }
+    } catch (e) {
+    }
+    this.activeIgnoreRules = configured;
+  }
   async testConnection() {
+    await this.loadIgnoreRules();
     const token = this.requireToken();
     const repository = await this.getRepository(token);
     const branch = this.plugin.settings.syncBranch.trim() || repository.default_branch;
@@ -1238,6 +1267,7 @@ var GitHubSyncService = class {
     if (this.running) throw new Error(this.plugin.t("syncAlreadyRunning"));
     this.running = true;
     try {
+      await this.loadIgnoreRules();
       const token = this.requireToken();
       this.update("connecting", this.plugin.t("statusConnecting"));
       const repository = await this.getRepository(token);
@@ -1729,12 +1759,26 @@ var GitHubSyncService = class {
     return path.startsWith(`${root}/`);
   }
   isIgnored(path) {
+    var _a;
     const normalized = (0, import_obsidian4.normalizePath)(path);
     if (HARD_EXCLUDES.some((prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix))) return true;
     const localSyncState = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
     if (normalized === localSyncState) return true;
     if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
-    return parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns).some((pattern) => matchesPattern(normalized, pattern));
+    const patterns = (_a = this.activeIgnoreRules) != null ? _a : parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    let ignored = false;
+    for (const pattern of patterns) {
+      if (pattern.startsWith("!")) {
+        if (ignored && matchesPattern(normalized, pattern.slice(1))) {
+          ignored = false;
+        }
+      } else {
+        if (matchesPattern(normalized, pattern)) {
+          ignored = true;
+        }
+      }
+    }
+    return ignored;
   }
   ensureFileSize(path, bytes) {
     const maximum = Math.max(1, this.plugin.settings.syncMaxFileSizeMb) * 1024 * 1024;
@@ -1892,6 +1936,7 @@ function parseRepository(value, invalidMessage = "Repository must use the owner/
   return { owner: match[1], repository: match[2] };
 }
 function parseIgnorePatterns(value) {
+  if (!value) return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
 }
 function matchesPattern(path, pattern) {
@@ -2020,6 +2065,8 @@ var EN = {
   syncIntervalDescription: "Minimum 5 minutes.",
   maxFileSize: "Per-file limit (MB)",
   maxFileSizeDescription: "Default 50 MB. Sync stops instead of silently skipping oversized files. Regular GitHub blobs are not intended for very large files.",
+  useGitignore: "Use .gitignore",
+  useGitignoreDescription: "Read the .gitignore file before pushing and ignore the paths specified in it.",
   ignoredPaths: "Ignored paths",
   ignoredPathsDescription: "One vault-relative path or glob per line. Notes, themes, CSS, plugins, enabled-plugin lists, and plugin settings sync normally. Workspace layouts, trash, Git internals, and local sync state stay device-specific.",
   obsidianGitWarning: "This vault also has Obsidian Git enabled. Before enabling automatic sync, turn off Obsidian Git automatic pull and backup so two sync engines do not update the same branch.",
@@ -3456,6 +3503,7 @@ var DEFAULT_SETTINGS = {
   syncBranch: "main",
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
+  syncUseGitignore: true,
   syncIgnorePatterns: "",
   syncMaxFileSizeMb: 50,
   syncOnStartup: false,
@@ -3601,6 +3649,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       ...DEFAULT_SETTINGS,
       ...loaded != null ? loaded : {},
       language: isLanguageSetting(loaded == null ? void 0 : loaded.language) ? loaded.language : "auto",
+      syncUseGitignore: typeof (loaded == null ? void 0 : loaded.syncUseGitignore) === "boolean" ? loaded.syncUseGitignore : true,
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       syncIgnorePatterns: savedIgnorePatterns,

@@ -460,3 +460,129 @@ assert.ok(pushEntries.some((entry) => entry.path === selfMainPath), "push-only m
 assert.ok(pushEntries.some((entry) => entry.path === otherPluginPath), "push-only must publish updates for every installed community plugin");
 
 console.log("Git sync core tests passed.");
+
+// --- .gitignore Tests ---
+const gitignoreService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async (file) => file.path === ".gitignore" ? "gitignore-test.md\n!not-ignored.md\n" : "",
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+
+await gitignoreService.loadIgnoreRules();
+assert.equal(gitignoreService.isIgnored("gitignore-test.md"), true);
+assert.equal(gitignoreService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreService.isIgnored("not-ignored.md"), false);
+
+const gitignoreOffService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: false },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async (file) => file.path === ".gitignore" ? "gitignore-test.md\n" : "",
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+
+await gitignoreOffService.loadIgnoreRules();
+assert.equal(gitignoreOffService.isIgnored("gitignore-test.md"), false);
+assert.equal(gitignoreOffService.isIgnored("configured-ignore.md"), true);
+
+const gitignoreNoFileService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: () => null,
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+
+await gitignoreNoFileService.loadIgnoreRules();
+assert.equal(gitignoreNoFileService.isIgnored("gitignore-test.md"), false);
+assert.equal(gitignoreNoFileService.isIgnored("configured-ignore.md"), true);
+
+const gitignoreAdapterService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: () => null,
+      adapter: {
+        exists: async (path) => path === ".gitignore",
+        read: async (path) => path === ".gitignore" ? "adapter-test.md\n" : ""
+      }
+    }
+  },
+  t: () => "",
+}, () => {});
+
+await gitignoreAdapterService.loadIgnoreRules();
+assert.equal(gitignoreAdapterService.isIgnored("adapter-test.md"), true);
+assert.equal(gitignoreAdapterService.isIgnored("configured-ignore.md"), true);
+
+const gitignoreEmptyFileService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => "",
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+
+await gitignoreEmptyFileService.loadIgnoreRules();
+assert.equal(gitignoreEmptyFileService.isIgnored("configured-ignore.md"), true);
+
+const gitignoreNegationTestService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => "*.md\n!important.md\n",
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+await gitignoreNegationTestService.loadIgnoreRules();
+assert.equal(gitignoreNegationTestService.isIgnored("test.md"), true);
+assert.equal(gitignoreNegationTestService.isIgnored("important.md"), false);
+
+const gitignoreNegationOverwriteService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncIgnorePatterns: "*.md", syncUseGitignore: true },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => "!important.md\n",
+      adapter: { exists: async () => false }
+    }
+  },
+  t: () => "",
+}, () => {});
+await gitignoreNegationOverwriteService.loadIgnoreRules();
+assert.equal(gitignoreNegationOverwriteService.isIgnored("test.md"), true);
+assert.equal(gitignoreNegationOverwriteService.isIgnored("important.md"), true); // configured rules come after gitignore rules, so *.md overrides !important.md

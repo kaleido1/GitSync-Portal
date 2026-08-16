@@ -74,6 +74,8 @@ const EN = {
   syncIntervalDescription: "Minimum 5 minutes.",
   maxFileSize: "Per-file limit (MB)",
   maxFileSizeDescription: "Default 50 MB. Sync stops instead of silently skipping oversized files. Regular GitHub blobs are not intended for very large files.",
+  useGitignore: "Use .gitignore",
+  useGitignoreDescription: "Read the .gitignore file before pushing and ignore the paths specified in it.",
   ignoredPaths: "Ignored paths",
   ignoredPathsDescription: "One vault-relative path or glob per line. Notes, themes, CSS, plugins, enabled-plugin lists, and plugin settings sync normally. Workspace layouts, trash, Git internals, and local sync state stay device-specific.",
   obsidianGitWarning: "This vault also has Obsidian Git enabled. Before enabling automatic sync, turn off Obsidian Git automatic pull and backup so two sync engines do not update the same branch.",

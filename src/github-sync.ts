@@ -133,6 +133,7 @@ export interface GitHubSyncStatus {
 
 export class GitHubSyncService {
   private running = false;
+  private activeIgnoreRules: string[] | null = null;
 
   constructor(
     private readonly plugin: GitSyncPortalPlugin,
@@ -143,7 +144,37 @@ export class GitHubSyncService {
     return this.running;
   }
 
+  private async loadIgnoreRules(): Promise<void> {
+    const configured = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    if (!this.plugin.settings.syncUseGitignore) {
+      this.activeIgnoreRules = configured;
+      return;
+    }
+    try {
+      const gitignoreFile = this.plugin.app.vault.getFileByPath(".gitignore");
+      if (gitignoreFile) {
+        const gitignoreContent = await this.plugin.app.vault.read(gitignoreFile);
+        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
+        this.activeIgnoreRules = [...gitignoreRules, ...configured];
+        return;
+      }
+
+      // Fallback to reading via adapter if getFileByPath returns null but file exists on disk
+      if (await this.plugin.app.vault.adapter.exists(".gitignore")) {
+         const gitignoreContent = await this.plugin.app.vault.adapter.read(".gitignore");
+         const gitignoreRules = parseIgnorePatterns(gitignoreContent);
+         this.activeIgnoreRules = [...gitignoreRules, ...configured];
+         return;
+      }
+    } catch {
+      // Safely ignore errors
+    }
+    this.activeIgnoreRules = configured;
+  }
+
+
   async testConnection(): Promise<{ repository: string; branch: string; commitSha: string }> {
+    await this.loadIgnoreRules();
     const token = this.requireToken();
     const repository = await this.getRepository(token);
     const branch = this.plugin.settings.syncBranch.trim() || repository.default_branch;
@@ -155,6 +186,7 @@ export class GitHubSyncService {
     if (this.running) throw new Error(this.plugin.t("syncAlreadyRunning"));
     this.running = true;
     try {
+      await this.loadIgnoreRules();
       const token = this.requireToken();
       this.update("connecting", this.plugin.t("statusConnecting"));
       const repository = await this.getRepository(token);
@@ -710,7 +742,23 @@ export class GitHubSyncService {
     const localSyncState = normalizePath(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
     if (normalized === localSyncState) return true;
     if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
-    return parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns).some((pattern) => matchesPattern(normalized, pattern));
+
+    const patterns = this.activeIgnoreRules ?? parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+
+    let ignored = false;
+    for (const pattern of patterns) {
+      if (pattern.startsWith("!")) {
+        if (ignored && matchesPattern(normalized, pattern.slice(1))) {
+          ignored = false;
+        }
+      } else {
+        if (matchesPattern(normalized, pattern)) {
+          ignored = true;
+        }
+      }
+    }
+
+    return ignored;
   }
 
   private ensureFileSize(path: string, bytes: number): void {
@@ -907,7 +955,8 @@ export function parseRepository(value: string, invalidMessage = "Repository must
   return { owner: match[1], repository: match[2] };
 }
 
-function parseIgnorePatterns(value: string): string[] {
+function parseIgnorePatterns(value?: string): string[] {
+  if (!value) return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
 }
 

@@ -125,6 +125,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
           this.toggleDefinition("periodicSync", "periodicSyncDescription", this.plugin.settings.syncPeriodically, (value) => { this.plugin.settings.syncPeriodically = value; }),
           this.numberDefinition("syncInterval", "syncIntervalDescription", this.plugin.settings.syncIntervalMinutes, 5, 10080, (value) => { this.plugin.settings.syncIntervalMinutes = value; }),
           this.numberDefinition("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => { this.plugin.settings.syncMaxFileSizeMb = value; }),
+          this.toggleDefinition("useGitignore", "useGitignoreDescription", this.plugin.settings.syncUseGitignore, (value) => { this.plugin.settings.syncUseGitignore = value; }),
           {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
