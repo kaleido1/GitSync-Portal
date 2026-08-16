@@ -11,7 +11,7 @@ Current version: `2.1.15`
 The dashboard keeps sync controls, the current note, favorites, and recent reading within reach.
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-desktop.png" alt="GitSync Portal dashboard in Obsidian on desktop" width="72%">
+  <img src="assets/screenshots/dashboard-desktop.png" alt="GitSync Portal dashboard in Obsidian on desktop" width="100%">
 </p>
 
 ## Highlights
