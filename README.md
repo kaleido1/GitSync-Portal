@@ -6,6 +6,18 @@ Current version: `2.1.14`
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
 
+## Preview
+
+The same dashboard adapts to desktop and mobile, keeping sync controls, the current note, favorites, and recent reading within reach.
+
+<p align="center">
+  <img src="assets/screenshots/dashboard-desktop.png" alt="GitSync Portal dashboard in Obsidian on desktop" width="72%">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/dashboard-mobile.jpg" alt="GitSync Portal dashboard in Obsidian on Android" width="360">
+</p>
+
 ## Highlights
 
 - Two-way GitHub synchronization without system Git, Node.js, Electron, or platform-specific shell commands
