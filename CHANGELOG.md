@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.15] - 2026-08-16
+
+### Changed
+
+- Keep the README preview focused on the desktop Dashboard screenshot.
+
 ## [2.1.14] - 2026-08-16
 
 ### Fixed
