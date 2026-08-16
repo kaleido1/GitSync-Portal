@@ -1,6 +1,6 @@
 {
   "name": "gitsync-portal",
-  "version": "2.1.13",
+  "version": "2.1.14",
   "private": true,
   "description": "Cross-platform GitHub vault synchronization for Obsidian",
   "author": "Kai Liu",
@@ -20,8 +20,9 @@
     "test:sync": "node scripts/test-sync.mjs",
     "test:settings": "node scripts/test-settings.mjs",
     "test:defaults": "node scripts/test-default-settings.mjs",
+    "test:dashboard": "node scripts/test-dashboard-refresh.mjs",
     "test:i18n": "node scripts/test-i18n.mjs",
-    "test": "npm run lint:review && npm run build && npm run check:release && npm run test:sync && npm run test:settings && npm run test:defaults && npm run test:i18n"
+    "test": "npm run lint:review && npm run build && npm run check:release && npm run test:sync && npm run test:settings && npm run test:defaults && npm run test:dashboard && npm run test:i18n"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

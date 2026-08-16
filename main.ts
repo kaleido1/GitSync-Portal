@@ -92,6 +92,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   private quizSaveTimer: number | null = null;
   private syncOnSaveTimer: number | null = null;
   private periodicSyncTimer: number | null = null;
+  private dashboardRefreshTimer: number | null = null;
   private periodicSyncKey = "";
   private syncQueue: Promise<void> = Promise.resolve();
   private syncQueueDepth = 0;
@@ -166,6 +167,10 @@ export default class GitSyncPortalPlugin extends Plugin {
 
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (file instanceof TFile && file.extension === "md") void this.recordOpen(file);
+      this.scheduleDashboardRefresh();
+    }));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+      this.scheduleDashboardRefresh();
     }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (file instanceof TFile) this.searchCache.delete(file.path);
@@ -204,6 +209,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     if (this.periodicSyncTimer !== null) window.clearInterval(this.periodicSyncTimer);
+    if (this.dashboardRefreshTimer !== null) window.clearTimeout(this.dashboardRefreshTimer);
   }
 
   async loadSettings(): Promise<void> {
@@ -371,11 +377,12 @@ export default class GitSyncPortalPlugin extends Plugin {
       new Notice(this.t("missingHomeNote"));
       return;
     }
-    await this.app.workspace.getLeaf(false).openFile(file);
+    await this.openFile(file);
   }
 
   async openFile(file: TFile): Promise<void> {
     await this.app.workspace.getLeaf(false).openFile(file);
+    this.scheduleDashboardRefresh();
   }
 
   isFavorite(path: string): boolean {
@@ -474,6 +481,14 @@ export default class GitSyncPortalPlugin extends Plugin {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
+  }
+
+  private scheduleDashboardRefresh(): void {
+    if (this.dashboardRefreshTimer !== null) return;
+    this.dashboardRefreshTimer = window.setTimeout(() => {
+      this.dashboardRefreshTimer = null;
+      void this.refreshDashboard();
+    }, 0);
   }
 
   private updateDashboardSyncStatus(): void {

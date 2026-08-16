@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.14] - 2026-08-16
+
+### Fixed
+
+- Refresh the Dashboard's Current note card after every file open or active-leaf change, including the Open home action.
+
 ## [2.1.13] - 2026-08-16
 
 ### Fixed

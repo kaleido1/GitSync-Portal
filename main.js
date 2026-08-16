@@ -3474,6 +3474,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     this.quizSaveTimer = null;
     this.syncOnSaveTimer = null;
     this.periodicSyncTimer = null;
+    this.dashboardRefreshTimer = null;
     this.periodicSyncKey = "";
     this.syncQueue = Promise.resolve();
     this.syncQueueDepth = 0;
@@ -3546,6 +3547,10 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     });
     this.registerEvent(this.app.workspace.on("file-open", (file) => {
       if (file instanceof import_obsidian6.TFile && file.extension === "md") void this.recordOpen(file);
+      this.scheduleDashboardRefresh();
+    }));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+      this.scheduleDashboardRefresh();
     }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (file instanceof import_obsidian6.TFile) this.searchCache.delete(file.path);
@@ -3580,6 +3585,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     if (this.quizSaveTimer !== null) window.clearTimeout(this.quizSaveTimer);
     if (this.syncOnSaveTimer !== null) window.clearTimeout(this.syncOnSaveTimer);
     if (this.periodicSyncTimer !== null) window.clearInterval(this.periodicSyncTimer);
+    if (this.dashboardRefreshTimer !== null) window.clearTimeout(this.dashboardRefreshTimer);
   }
   async loadSettings() {
     var _a, _b;
@@ -3724,10 +3730,11 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       new import_obsidian6.Notice(this.t("missingHomeNote"));
       return;
     }
-    await this.app.workspace.getLeaf(false).openFile(file);
+    await this.openFile(file);
   }
   async openFile(file) {
     await this.app.workspace.getLeaf(false).openFile(file);
+    this.scheduleDashboardRefresh();
   }
   isFavorite(path) {
     return this.settings.favorites.indexOf(path) !== -1;
@@ -3808,6 +3815,13 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
+  }
+  scheduleDashboardRefresh() {
+    if (this.dashboardRefreshTimer !== null) return;
+    this.dashboardRefreshTimer = window.setTimeout(() => {
+      this.dashboardRefreshTimer = null;
+      void this.refreshDashboard();
+    }, 0);
   }
   updateDashboardSyncStatus() {
     const leaves = [
