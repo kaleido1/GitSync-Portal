@@ -132,9 +132,12 @@ export interface GitHubSyncStatus {
   total?: number;
 }
 
+type IgnoreScope = "push" | "pull";
+
 export class GitHubSyncService {
   private running = false;
-  private activeIgnoreRules: string[] | null = null;
+  private configuredIgnoreRules: string[] = [];
+  private gitignoreRules: string[] = [];
 
   constructor(
     private readonly plugin: GitSyncPortalPlugin,
@@ -146,33 +149,24 @@ export class GitHubSyncService {
   }
 
   private async loadIgnoreRules(): Promise<void> {
-    const configured = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
-    if (!this.plugin.settings.syncUseGitignore) {
-      this.activeIgnoreRules = configured;
-      return;
-    }
+    this.configuredIgnoreRules = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    this.gitignoreRules = [];
+    if (!this.plugin.settings.syncUseGitignore) return;
+
     try {
       const gitignoreFile = this.plugin.app.vault.getFileByPath(".gitignore");
       if (gitignoreFile) {
-        const gitignoreContent = await this.plugin.app.vault.read(gitignoreFile);
-        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
-        this.activeIgnoreRules = [...gitignoreRules, ...configured];
+        this.gitignoreRules = parseIgnorePatterns(await this.plugin.app.vault.read(gitignoreFile));
         return;
       }
-
-      // Fallback to reading via adapter if getFileByPath returns null but file exists on disk
       if (await this.plugin.app.vault.adapter.exists(".gitignore")) {
-         const gitignoreContent = await this.plugin.app.vault.adapter.read(".gitignore");
-         const gitignoreRules = parseIgnorePatterns(gitignoreContent);
-         this.activeIgnoreRules = [...gitignoreRules, ...configured];
-         return;
+        this.gitignoreRules = parseIgnorePatterns(await this.plugin.app.vault.adapter.read(".gitignore"));
       }
     } catch {
-      // Safely ignore errors
+      // A missing or unreadable .gitignore must not disable normal syncing.
+      this.gitignoreRules = [];
     }
-    this.activeIgnoreRules = configured;
   }
-
 
   async testConnection(): Promise<{ repository: string; branch: string; commitSha: string }> {
     await this.loadIgnoreRules();
@@ -562,7 +556,7 @@ export class GitHubSyncService {
     const files = new Map<string, RemoteFile>();
     tree.tree.forEach((entry) => {
       const path = normalizePath(entry.path);
-      if (entry.type !== "blob" || this.isIgnored(path)) return;
+      if (entry.type !== "blob" || this.isIgnored(path, "pull")) return;
       files.set(path, { path, sha: entry.sha, mode: entry.mode, size: entry.size ?? 0 });
     });
     return { commitSha: commit.sha, treeSha: commit.tree.sha, files };
@@ -587,11 +581,11 @@ export class GitHubSyncService {
       const listed = await this.plugin.app.vault.adapter.list(directory || "/");
       for (const rawPath of listed.files) {
         const path = adapterPath(rawPath);
-        if (path && !this.isIgnored(path)) output.push(path);
+        if (path && !this.isIgnored(path, "push")) output.push(path);
       }
       for (const rawPath of listed.folders) {
         const path = adapterPath(rawPath);
-        if (path && !this.isIgnored(path)) await visit(path);
+        if (path && !this.isIgnored(path, "push")) await visit(path);
       }
     };
     await visit("/");
@@ -721,7 +715,7 @@ export class GitHubSyncService {
     const bytes = new TextEncoder().encode(`${JSON.stringify(updated, null, 2)}\n`);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
-    if (this.isIgnored(path)) return null;
+    if (this.isIgnored(path, "push")) return null;
     return { path, sha: await gitBlobSha(data), mtime: Date.now() };
   }
 
@@ -737,20 +731,20 @@ export class GitHubSyncService {
     return path.startsWith(`${root}/`);
   }
 
-  private isIgnored(path: string): boolean {
+  private isIgnored(path: string, scope: IgnoreScope = "push"): boolean {
     const normalized = normalizePath(path);
     if (HARD_EXCLUDES.some((prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix))) return true;
     const localSyncState = normalizePath(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
     if (normalized === localSyncState) return true;
     if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
 
-    const patterns = this.activeIgnoreRules ?? parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    const configured = this.configuredIgnoreRules.length > 0
+      ? this.configuredIgnoreRules
+      : parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    if (matchesIgnoreRules(normalized, configured)) return true;
 
-    if (patterns.length > 0) {
-      const ig = ignore().add(patterns);
-      return ig.ignores(normalized);
-    }
-    return false;
+    if (scope === "pull" && !this.plugin.settings.syncGitignoreAffectsPull) return false;
+    return this.plugin.settings.syncUseGitignore && matchesIgnoreRules(normalized, this.gitignoreRules);
   }
 
   private ensureFileSize(path: string, bytes: number): void {
@@ -950,6 +944,11 @@ export function parseRepository(value: string, invalidMessage = "Repository must
 function parseIgnorePatterns(value?: string): string[] {
   if (!value) return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+}
+
+function matchesIgnoreRules(path: string, patterns: string[]): boolean {
+  if (!patterns.length) return false;
+  return ignore().add(patterns).ignores(path);
 }
 
 function sanitizeSegment(value: string): string {

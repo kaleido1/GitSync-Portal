@@ -82,6 +82,7 @@ const settings = {
   syncIntervalMinutes: 30,
   syncMaxFileSizeMb: 50,
   syncUseGitignore: true,
+  syncGitignoreAffectsPull: false,
   syncIgnorePatterns: "",
   homeNote: "",
   openDashboardOnStartup: false,

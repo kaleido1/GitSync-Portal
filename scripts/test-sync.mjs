@@ -220,6 +220,80 @@ assert.equal(service.isIgnored("folder/note.conflict-ios-20260813T000000Z.md"), 
 const hardExcludeService = new GitHubSyncService({ ...fakePlugin, settings: { syncIgnorePatterns: "" } }, () => {});
 assert.equal(hardExcludeService.isIgnored(".obsidian/plugins/gitsync-portal/local-sync-state.json"), true);
 
+// The active Class Notes Vault keeps workspace/runtime state local but syncs
+// plugin enablement lists. Keep this fixture aligned with its real .gitignore.
+const classNotesGitignore = [
+  ".DS_Store",
+  ".gitignore.conflict-*",
+  ".trash/",
+  ".obsidian/workspace*.json",
+  ".obsidian/page-preview.json",
+  ".obsidian/plugins/obsidian-viewer/data.json",
+  ".obsidian/plugins/obsidian-viewer/local-sync-state.json",
+  ".obsidian/plugins/obsidian-viewer/*.conflict-*",
+  ".obsidian/plugins/obsidian-git/data.json",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/plugins/*/manifest.conflict-*",
+].join("\n");
+const realVaultService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncUseGitignore: true, syncGitignoreAffectsPull: false, syncIgnorePatterns: "" },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => classNotesGitignore,
+      adapter: { exists: async () => false },
+    },
+  },
+  t: () => "",
+}, () => {});
+await realVaultService.loadIgnoreRules();
+assert.equal(realVaultService.isIgnored(".obsidian/workspace.json", "push"), true);
+assert.equal(realVaultService.isIgnored(".obsidian/plugins/obsidian-git/data.json", "push"), true);
+assert.equal(realVaultService.isIgnored(".obsidian/community-plugins.json", "push"), false);
+assert.equal(realVaultService.isIgnored(".obsidian/core-plugins.json", "push"), false);
+assert.equal(realVaultService.isIgnored("Notes/real-note.md", "push"), false);
+
+const matchedEnablementService = new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncUseGitignore: true, syncGitignoreAffectsPull: true, syncIgnorePatterns: "" },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => ".obsidian/community-plugins*.json\n.obsidian/core-plugins*.json\n",
+      adapter: { exists: async () => false },
+    },
+  },
+  t: () => "",
+}, () => {});
+await matchedEnablementService.loadIgnoreRules();
+assert.equal(matchedEnablementService.isIgnored(".obsidian/community-plugins.json", "push"), true);
+assert.equal(matchedEnablementService.isIgnored(".obsidian/community-plugins.json", "pull"), true);
+assert.equal(matchedEnablementService.isIgnored(".obsidian/core-plugins.json", "push"), true);
+
+const pullSwitchPlugin = (affectsPull) => new GitHubSyncService({
+  manifest: { id: "gitsync-portal" },
+  settings: { syncUseGitignore: true, syncGitignoreAffectsPull: affectsPull, syncIgnorePatterns: "" },
+  app: {
+    vault: {
+      configDir: ".obsidian",
+      getFileByPath: (path) => path === ".gitignore" ? { path } : null,
+      read: async () => "remote-only.md\n",
+      adapter: { exists: async () => false },
+    },
+  },
+  t: () => "",
+}, () => {});
+const pullOffService = pullSwitchPlugin(false);
+await pullOffService.loadIgnoreRules();
+assert.equal(pullOffService.isIgnored("remote-only.md", "push"), true);
+assert.equal(pullOffService.isIgnored("remote-only.md", "pull"), false);
+const pullOnService = pullSwitchPlugin(true);
+await pullOnService.loadIgnoreRules();
+assert.equal(pullOnService.isIgnored("remote-only.md", "pull"), true);
+
 const retryPlugin = {
   settings: { syncBranch: "main", syncRepository: "owner/repo", lastSyncedCommit: "", syncDeviceName: "test" },
   getGitHubToken: () => "token",
@@ -459,12 +533,10 @@ assert.equal(pushEntries.some((entry) => entry.path.includes(".conflict-")), fal
 assert.ok(pushEntries.some((entry) => entry.path === selfMainPath), "push-only must publish a locally installed plugin update even when the baseline matches local");
 assert.ok(pushEntries.some((entry) => entry.path === otherPluginPath), "push-only must publish updates for every installed community plugin");
 
-console.log("Git sync core tests passed.");
-
 // --- .gitignore Tests ---
 const gitignoreService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -483,7 +555,7 @@ assert.equal(gitignoreService.isIgnored("not-ignored.md"), false);
 
 const gitignoreOffService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: false },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: false, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -501,7 +573,7 @@ assert.equal(gitignoreOffService.isIgnored("configured-ignore.md"), true);
 
 const gitignoreNoFileService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -518,7 +590,7 @@ assert.equal(gitignoreNoFileService.isIgnored("configured-ignore.md"), true);
 
 const gitignoreAdapterService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -538,7 +610,7 @@ assert.equal(gitignoreAdapterService.isIgnored("configured-ignore.md"), true);
 
 const gitignoreEmptyFileService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -555,7 +627,7 @@ assert.equal(gitignoreEmptyFileService.isIgnored("configured-ignore.md"), true);
 
 const gitignoreNegationTestService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "configured-ignore.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -572,7 +644,7 @@ assert.equal(gitignoreNegationTestService.isIgnored("important.md"), false);
 
 const gitignoreNegationOverwriteService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
-  settings: { syncIgnorePatterns: "*.md", syncUseGitignore: true },
+  settings: { syncIgnorePatterns: "*.md", syncUseGitignore: true, syncGitignoreAffectsPull: false },
   app: {
     vault: {
       configDir: ".obsidian",
@@ -586,3 +658,5 @@ const gitignoreNegationOverwriteService = new GitHubSyncService({
 await gitignoreNegationOverwriteService.loadIgnoreRules();
 assert.equal(gitignoreNegationOverwriteService.isIgnored("test.md"), true);
 assert.equal(gitignoreNegationOverwriteService.isIgnored("important.md"), true); // configured rules come after gitignore rules, so *.md overrides !important.md
+
+console.log("Git sync core tests passed.");

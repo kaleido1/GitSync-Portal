@@ -36,6 +36,7 @@ export interface ViewerSettings {
   syncDeviceNameAuto: boolean;
   syncDeviceName: string;
   syncUseGitignore: boolean;
+  syncGitignoreAffectsPull: boolean;
   syncIgnorePatterns: string;
   syncMaxFileSizeMb: number;
   syncOnStartup: boolean;
@@ -77,6 +78,7 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
   syncUseGitignore: true,
+  syncGitignoreAffectsPull: false,
   syncIgnorePatterns: "",
   syncMaxFileSizeMb: 50,
   syncOnStartup: false,
@@ -232,6 +234,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       ...(loaded ?? {}),
       language: isLanguageSetting(loaded?.language) ? loaded.language : "auto",
       syncUseGitignore: typeof loaded?.syncUseGitignore === "boolean" ? loaded.syncUseGitignore : true,
+      syncGitignoreAffectsPull: typeof loaded?.syncGitignoreAffectsPull === "boolean" ? loaded.syncGitignoreAffectsPull : false,
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       syncIgnorePatterns: savedIgnorePatterns,

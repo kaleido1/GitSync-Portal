@@ -106,6 +106,10 @@ The dashboard keeps two-way sync as the primary action and places **Pull only** 
 
 Push-only always publishes locally installed community plugin files when they differ from the remote repository. This makes desktop plugin installs and upgrades available to mobile devices on their next pull-only sync. Explicitly ignored runtime and device-local files remain excluded.
 
+GitSync Portal can read the vault's root `.gitignore` on each connection test and sync. **Use .gitignore** controls whether those rules exclude local files from upload. **Apply .gitignore when pulling** is a separate, opt-in setting: when enabled, matching remote paths are also hidden from pull and conflict reconciliation. The setting is off by default so a local `.gitignore` does not silently prevent remote changes from being downloaded. The manually configured **Ignored paths** continue to apply in both directions.
+
+`.obsidian/community-plugins.json` follows the same `.gitignore` rules as every other path. Keep it out of `.gitignore` when community-plugin enablement should synchronize; add a matching rule when it should remain device-local.
+
 If the remote branch changes during the final commit, GitSync Portal waits briefly for the remote update to settle, reads the new branch head, and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
 
 Manual, startup, save-triggered, and periodic sync requests share one queue. A request received while another sync is still saving settings, communicating with GitHub, or applying changes waits until the current task finishes instead of starting a competing attempt. The queue advances after both successful and failed syncs.

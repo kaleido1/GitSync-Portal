@@ -1166,6 +1166,9 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
           this.toggleDefinition("useGitignore", "useGitignoreDescription", this.plugin.settings.syncUseGitignore, (value) => {
             this.plugin.settings.syncUseGitignore = value;
           }),
+          this.toggleDefinition("gitignoreAffectsPull", "gitignoreAffectsPullDescription", this.plugin.settings.syncGitignoreAffectsPull, (value) => {
+            this.plugin.settings.syncGitignoreAffectsPull = value;
+          }),
           {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
@@ -1698,34 +1701,28 @@ var GitHubSyncService = class {
     this.plugin = plugin;
     this.onStatus = onStatus;
     this.running = false;
-    this.activeIgnoreRules = null;
+    this.configuredIgnoreRules = [];
+    this.gitignoreRules = [];
   }
   get isRunning() {
     return this.running;
   }
   async loadIgnoreRules() {
-    const configured = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
-    if (!this.plugin.settings.syncUseGitignore) {
-      this.activeIgnoreRules = configured;
-      return;
-    }
+    this.configuredIgnoreRules = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    this.gitignoreRules = [];
+    if (!this.plugin.settings.syncUseGitignore) return;
     try {
       const gitignoreFile = this.plugin.app.vault.getFileByPath(".gitignore");
       if (gitignoreFile) {
-        const gitignoreContent = await this.plugin.app.vault.read(gitignoreFile);
-        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
-        this.activeIgnoreRules = [...gitignoreRules, ...configured];
+        this.gitignoreRules = parseIgnorePatterns(await this.plugin.app.vault.read(gitignoreFile));
         return;
       }
       if (await this.plugin.app.vault.adapter.exists(".gitignore")) {
-        const gitignoreContent = await this.plugin.app.vault.adapter.read(".gitignore");
-        const gitignoreRules = parseIgnorePatterns(gitignoreContent);
-        this.activeIgnoreRules = [...gitignoreRules, ...configured];
-        return;
+        this.gitignoreRules = parseIgnorePatterns(await this.plugin.app.vault.adapter.read(".gitignore"));
       }
     } catch (e) {
+      this.gitignoreRules = [];
     }
-    this.activeIgnoreRules = configured;
   }
   async testConnection() {
     await this.loadIgnoreRules();
@@ -2066,7 +2063,7 @@ var GitHubSyncService = class {
     tree.tree.forEach((entry) => {
       var _a;
       const path = (0, import_obsidian4.normalizePath)(entry.path);
-      if (entry.type !== "blob" || this.isIgnored(path)) return;
+      if (entry.type !== "blob" || this.isIgnored(path, "pull")) return;
       files.set(path, { path, sha: entry.sha, mode: entry.mode, size: (_a = entry.size) != null ? _a : 0 });
     });
     return { commitSha: commit.sha, treeSha: commit.tree.sha, files };
@@ -2089,11 +2086,11 @@ var GitHubSyncService = class {
       const listed = await this.plugin.app.vault.adapter.list(directory || "/");
       for (const rawPath of listed.files) {
         const path = adapterPath(rawPath);
-        if (path && !this.isIgnored(path)) output.push(path);
+        if (path && !this.isIgnored(path, "push")) output.push(path);
       }
       for (const rawPath of listed.folders) {
         const path = adapterPath(rawPath);
-        if (path && !this.isIgnored(path)) await visit(path);
+        if (path && !this.isIgnored(path, "push")) await visit(path);
       }
     };
     await visit("/");
@@ -2217,7 +2214,7 @@ var GitHubSyncService = class {
 `);
     const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     await this.plugin.app.vault.adapter.writeBinary(path, data);
-    if (this.isIgnored(path)) return null;
+    if (this.isIgnored(path, "push")) return null;
     return { path, sha: await gitBlobSha(data), mtime: Date.now() };
   }
   isSelfCoreFile(path) {
@@ -2230,19 +2227,16 @@ var GitHubSyncService = class {
     const root = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins`);
     return path.startsWith(`${root}/`);
   }
-  isIgnored(path) {
-    var _a;
+  isIgnored(path, scope = "push") {
     const normalized = (0, import_obsidian4.normalizePath)(path);
     if (HARD_EXCLUDES.some((prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix))) return true;
     const localSyncState = (0, import_obsidian4.normalizePath)(`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/local-sync-state.json`);
     if (normalized === localSyncState) return true;
     if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
-    const patterns = (_a = this.activeIgnoreRules) != null ? _a : parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
-    if (patterns.length > 0) {
-      const ig = (0, import_ignore.default)().add(patterns);
-      return ig.ignores(normalized);
-    }
-    return false;
+    const configured = this.configuredIgnoreRules.length > 0 ? this.configuredIgnoreRules : parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
+    if (matchesIgnoreRules(normalized, configured)) return true;
+    if (scope === "pull" && !this.plugin.settings.syncGitignoreAffectsPull) return false;
+    return this.plugin.settings.syncUseGitignore && matchesIgnoreRules(normalized, this.gitignoreRules);
   }
   ensureFileSize(path, bytes) {
     const maximum = Math.max(1, this.plugin.settings.syncMaxFileSizeMb) * 1024 * 1024;
@@ -2403,6 +2397,10 @@ function parseIgnorePatterns(value) {
   if (!value) return [];
   return value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
 }
+function matchesIgnoreRules(path, patterns) {
+  if (!patterns.length) return false;
+  return (0, import_ignore.default)().add(patterns).ignores(path);
+}
 function sanitizeSegment(value) {
   return value.trim().toLocaleLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "device";
 }
@@ -2517,7 +2515,9 @@ var EN = {
   maxFileSize: "Per-file limit (MB)",
   maxFileSizeDescription: "Default 50 MB. Sync stops instead of silently skipping oversized files. Regular GitHub blobs are not intended for very large files.",
   useGitignore: "Use .gitignore",
-  useGitignoreDescription: "Read the .gitignore file before pushing and ignore the paths specified in it.",
+  useGitignoreDescription: "Read the .gitignore file and ignore its paths when scanning local files for upload.",
+  gitignoreAffectsPull: "Apply .gitignore when pulling",
+  gitignoreAffectsPullDescription: "Also hide matching remote paths from pull and conflict reconciliation. Off by default.",
   ignoredPaths: "Ignored paths",
   ignoredPathsDescription: "One vault-relative path or glob per line. Notes, themes, CSS, plugins, enabled-plugin lists, and plugin settings sync normally. Workspace layouts, trash, Git internals, and local sync state stay device-specific.",
   obsidianGitWarning: "This vault also has Obsidian Git enabled. Before enabling automatic sync, turn off Obsidian Git automatic pull and backup so two sync engines do not update the same branch.",
@@ -2709,6 +2709,10 @@ var ZH = {
   syncIntervalDescription: "\u6700\u77ED 5 \u5206\u949F\u3002",
   maxFileSize: "\u5355\u6587\u4EF6\u4E0A\u9650\uFF08MB\uFF09",
   maxFileSizeDescription: "\u9ED8\u8BA4 50 MB\uFF1B\u8D85\u8FC7\u4E0A\u9650\u4F1A\u505C\u6B62\u540C\u6B65\u800C\u4E0D\u662F\u9759\u9ED8\u9057\u6F0F\u3002GitHub \u666E\u901A Git blob \u4E0D\u9002\u5408\u8D85\u5927\u6587\u4EF6\u3002",
+  useGitignore: "\u4F7F\u7528 .gitignore",
+  useGitignoreDescription: "\u8BFB\u53D6 .gitignore\uFF0C\u5E76\u5728\u626B\u63CF\u672C\u5730\u5F85\u4E0A\u4F20\u6587\u4EF6\u65F6\u5FFD\u7565\u5176\u4E2D\u5339\u914D\u7684\u8DEF\u5F84\u3002",
+  gitignoreAffectsPull: "\u62C9\u53D6\u65F6\u5E94\u7528 .gitignore",
+  gitignoreAffectsPullDescription: "\u540C\u65F6\u5728\u62C9\u53D6\u548C\u51B2\u7A81\u6BD4\u8F83\u65F6\u9690\u85CF\u5339\u914D\u7684\u8FDC\u7AEF\u8DEF\u5F84\uFF0C\u9ED8\u8BA4\u5173\u95ED\u3002",
   ignoredPaths: "\u5FFD\u7565\u8DEF\u5F84",
   ignoredPathsDescription: "\u6BCF\u884C\u4E00\u4E2A Vault \u76F8\u5BF9\u8DEF\u5F84\u6216 glob\u3002\u7B14\u8BB0\u3001\u4E3B\u9898\u3001CSS\u3001\u63D2\u4EF6\u672C\u4F53\u3001\u63D2\u4EF6\u542F\u7528\u5217\u8868\u548C\u63D2\u4EF6\u8BBE\u7F6E\u4F1A\u6B63\u5E38\u540C\u6B65\uFF1B\u5DE5\u4F5C\u533A\u5E03\u5C40\u3001\u56DE\u6536\u7AD9\u3001Git \u5185\u90E8\u5E93\u548C\u540C\u6B65\u5668\u8FD0\u884C\u72B6\u6001\u6309\u8BBE\u5907\u4FDD\u7559\u3002",
   obsidianGitWarning: "\u5F53\u524D Vault \u540C\u65F6\u542F\u7528\u4E86 Obsidian Git\u3002\u542F\u7528\u81EA\u52A8\u540C\u6B65\u524D\uFF0C\u8BF7\u5173\u95ED Obsidian Git \u7684\u81EA\u52A8 pull/backup\uFF0C\u907F\u514D\u4E24\u4E2A\u540C\u6B65\u5668\u540C\u65F6\u66F4\u65B0\u8FDC\u7AEF\u5206\u652F\u3002",
@@ -3955,6 +3959,7 @@ var DEFAULT_SETTINGS = {
   syncDeviceNameAuto: true,
   syncDeviceName: defaultDeviceName(),
   syncUseGitignore: true,
+  syncGitignoreAffectsPull: false,
   syncIgnorePatterns: "",
   syncMaxFileSizeMb: 50,
   syncOnStartup: false,
@@ -4101,6 +4106,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       ...loaded != null ? loaded : {},
       language: isLanguageSetting(loaded == null ? void 0 : loaded.language) ? loaded.language : "auto",
       syncUseGitignore: typeof (loaded == null ? void 0 : loaded.syncUseGitignore) === "boolean" ? loaded.syncUseGitignore : true,
+      syncGitignoreAffectsPull: typeof (loaded == null ? void 0 : loaded.syncGitignoreAffectsPull) === "boolean" ? loaded.syncGitignoreAffectsPull : false,
       syncDeviceNameAuto,
       syncDeviceName: syncDeviceNameAuto ? defaultDeviceName() : loadedDeviceName || defaultDeviceName(),
       syncIgnorePatterns: savedIgnorePatterns,
