@@ -194,10 +194,12 @@ const fakePlugin = {
 };
 const service = new GitHubSyncService(fakePlugin, () => {});
 assert.deepEqual(await service.listAdapterFiles(), [
+  ".DS_Store",
   ".gitignore",
   ".obsidian/app.json",
   ".obsidian/community-plugins.json",
   ".obsidian/core-plugins.json",
+  ".obsidian/page-preview.json",
   ".obsidian/plugins/example-plugin/main.js",
   ".obsidian/plugins/example-plugin/manifest.json",
   ".obsidian/plugins/gitsync-portal/data.json",
@@ -205,6 +207,9 @@ assert.deepEqual(await service.listAdapterFiles(), [
   ".obsidian/plugins/gitsync-portal/sync-state.json",
   ".obsidian/plugins/obsidian-git/data.json",
   ".obsidian/plugins/obsidian-git/main.js",
+  ".obsidian/plugins/obsidian-git/obsidian_askpass.sh",
+  ".obsidian/workspace-mobile.json",
+  ".obsidian/workspace.json",
   "folder/.hidden.md",
   "folder/visible.md",
   "note.md",
@@ -550,7 +555,7 @@ const gitignoreService = new GitHubSyncService({
 
 await gitignoreService.loadIgnoreRules();
 assert.equal(gitignoreService.isIgnored("gitignore-test.md"), true);
-assert.equal(gitignoreService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreService.isIgnored("configured-ignore.md"), false);
 assert.equal(gitignoreService.isIgnored("not-ignored.md"), false);
 
 const gitignoreOffService = new GitHubSyncService({
@@ -570,6 +575,8 @@ const gitignoreOffService = new GitHubSyncService({
 await gitignoreOffService.loadIgnoreRules();
 assert.equal(gitignoreOffService.isIgnored("gitignore-test.md"), false);
 assert.equal(gitignoreOffService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreOffService.isIgnored("configured-ignore.md", "pull"), true);
+assert.equal(gitignoreOffService.isIgnored(".gitignore"), true);
 
 const gitignoreNoFileService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
@@ -586,7 +593,7 @@ const gitignoreNoFileService = new GitHubSyncService({
 
 await gitignoreNoFileService.loadIgnoreRules();
 assert.equal(gitignoreNoFileService.isIgnored("gitignore-test.md"), false);
-assert.equal(gitignoreNoFileService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreNoFileService.isIgnored("configured-ignore.md"), false);
 
 const gitignoreAdapterService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
@@ -606,7 +613,7 @@ const gitignoreAdapterService = new GitHubSyncService({
 
 await gitignoreAdapterService.loadIgnoreRules();
 assert.equal(gitignoreAdapterService.isIgnored("adapter-test.md"), true);
-assert.equal(gitignoreAdapterService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreAdapterService.isIgnored("configured-ignore.md"), false);
 
 const gitignoreEmptyFileService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
@@ -623,7 +630,7 @@ const gitignoreEmptyFileService = new GitHubSyncService({
 }, () => {});
 
 await gitignoreEmptyFileService.loadIgnoreRules();
-assert.equal(gitignoreEmptyFileService.isIgnored("configured-ignore.md"), true);
+assert.equal(gitignoreEmptyFileService.isIgnored("configured-ignore.md"), false);
 
 const gitignoreNegationTestService = new GitHubSyncService({
   manifest: { id: "gitsync-portal" },
@@ -656,7 +663,7 @@ const gitignoreNegationOverwriteService = new GitHubSyncService({
   t: () => "",
 }, () => {});
 await gitignoreNegationOverwriteService.loadIgnoreRules();
-assert.equal(gitignoreNegationOverwriteService.isIgnored("test.md"), true);
-assert.equal(gitignoreNegationOverwriteService.isIgnored("important.md"), true); // configured rules come after gitignore rules, so *.md overrides !important.md
+assert.equal(gitignoreNegationOverwriteService.isIgnored("test.md"), false);
+assert.equal(gitignoreNegationOverwriteService.isIgnored("important.md"), false);
 
 console.log("Git sync core tests passed.");

@@ -125,22 +125,59 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
           this.toggleDefinition("periodicSync", "periodicSyncDescription", this.plugin.settings.syncPeriodically, (value) => { this.plugin.settings.syncPeriodically = value; }),
           this.numberDefinition("syncInterval", "syncIntervalDescription", this.plugin.settings.syncIntervalMinutes, 5, 10080, (value) => { this.plugin.settings.syncIntervalMinutes = value; }),
           this.numberDefinition("maxFileSize", "maxFileSizeDescription", this.plugin.settings.syncMaxFileSizeMb, 1, 99, (value) => { this.plugin.settings.syncMaxFileSizeMb = value; }),
-          this.toggleDefinition("useGitignore", "useGitignoreDescription", this.plugin.settings.syncUseGitignore, (value) => { this.plugin.settings.syncUseGitignore = value; }),
+          this.renderDefinition("useGitignore", this.plugin.t("useGitignoreDescription"), (setting) => {
+            setting.addToggle((toggle) => toggle.setValue(this.plugin.settings.syncUseGitignore).onChange(async (value) => {
+              this.plugin.settings.syncUseGitignore = value;
+              await this.plugin.saveSettings();
+              this.update();
+            }));
+          }),
           this.toggleDefinition("gitignoreAffectsPull", "gitignoreAffectsPullDescription", this.plugin.settings.syncGitignoreAffectsPull, (value) => { this.plugin.settings.syncGitignoreAffectsPull = value; }),
           {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
             render: (setting) => {
-              setting.addTextArea((text) => text.setPlaceholder(`.DS_Store\n${this.app.vault.configDir}/workspace*.json`).setValue(this.plugin.settings.syncIgnorePatterns).onChange(async (value) => {
-                this.plugin.settings.syncIgnorePatterns = value;
-                await this.plugin.saveSettings();
-              }));
+              setting.addTextArea((text) => {
+                const setVisibleRows = (value: string): void => {
+                  const lineCount = value ? value.split(/\r?\n/).length : 3;
+                  text.inputEl.rows = Math.max(6, lineCount);
+                  text.inputEl.setCssProps({ height: "auto" });
+                  text.inputEl.setCssProps({ height: `${text.inputEl.scrollHeight}px` });
+                };
+                const setValue = (value: string): void => {
+                  text.setValue(value);
+                  setVisibleRows(value);
+                };
+                const fallback = this.plugin.settings.syncIgnorePatterns;
+                let userChanged = false;
+
+                text.setPlaceholder(`.DS_Store\n${this.app.vault.configDir}/workspace*.json`);
+                setValue(fallback);
+                if (this.plugin.settings.syncUseGitignore && typeof this.plugin.readGitignore === "function") {
+                  void this.plugin.readGitignore().then((value) => {
+                    if (!userChanged) setValue(value ?? "");
+                  });
+                }
+
+                text.onChange(async (value) => {
+                  userChanged = true;
+                  setVisibleRows(value);
+                  if (this.plugin.settings.syncUseGitignore && typeof this.plugin.writeGitignore === "function") {
+                    await this.plugin.writeGitignore(value);
+                  } else {
+                    this.plugin.settings.syncIgnorePatterns = value;
+                    await this.plugin.saveSettings();
+                  }
+                });
+              });
             },
           },
-          {
-            name: t("obsidianGitWarning"),
-            render: (setting) => { setting.setClass("ov-setting-warning"); },
-          },
+          ...(this.hasObsidianGitInstalledAndEnabled()
+            ? [{
+              name: t("obsidianGitWarning"),
+              render: (setting: Setting) => { setting.setClass("ov-setting-warning"); },
+            }]
+            : []),
         ],
       },
       {
@@ -221,6 +258,18 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       }));
     });
+  }
+
+  private hasObsidianGitInstalledAndEnabled(): boolean {
+    const plugins = (this.app as unknown as { plugins: {
+      enabledPlugins?: Set<string>;
+      manifests?: Record<string, unknown>;
+      getPlugin?: (id: string) => unknown;
+    } }).plugins;
+    if (plugins.enabledPlugins?.has("obsidian-git") !== true) return false;
+    if (!Object.prototype.hasOwnProperty.call(plugins.manifests ?? {}, "obsidian-git")) return false;
+    const plugin = plugins.getPlugin?.("obsidian-git");
+    return plugin !== null && plugin !== undefined;
   }
 
   private numberDefinition(name: TranslationKey, description: TranslationKey, value: number, min: number, max: number, assign: (value: number) => void): SettingDefinition {

@@ -151,7 +151,7 @@ export class GitHubSyncService {
   private async loadIgnoreRules(): Promise<void> {
     this.configuredIgnoreRules = parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
     this.gitignoreRules = [];
-    if (!this.plugin.settings.syncUseGitignore) return;
+    if (this.plugin.settings.syncUseGitignore === false) return;
 
     try {
       const gitignoreFile = this.plugin.app.vault.getFileByPath(".gitignore");
@@ -738,13 +738,13 @@ export class GitHubSyncService {
     if (normalized === localSyncState) return true;
     if (GENERATED_CONFLICT_COPY.test(normalized)) return true;
 
-    const configured = this.configuredIgnoreRules.length > 0
-      ? this.configuredIgnoreRules
-      : parseIgnorePatterns(this.plugin.settings.syncIgnorePatterns);
-    if (matchesIgnoreRules(normalized, configured)) return true;
+    if (normalized === ".gitignore" && this.plugin.settings.syncUseGitignore === false) return true;
 
+    if (this.plugin.settings.syncUseGitignore === false) {
+      return matchesIgnoreRules(normalized, this.configuredIgnoreRules);
+    }
     if (scope === "pull" && !this.plugin.settings.syncGitignoreAffectsPull) return false;
-    return this.plugin.settings.syncUseGitignore && matchesIgnoreRules(normalized, this.gitignoreRules);
+    return matchesIgnoreRules(normalized, this.gitignoreRules);
   }
 
   private ensureFileSize(path: string, bytes: number): void {

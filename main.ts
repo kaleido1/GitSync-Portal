@@ -259,6 +259,23 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.syncStatus = { stage: "idle", message: this.settings.lastSyncSummary || this.t("notSynced") };
   }
 
+  async readGitignore(): Promise<string | null> {
+    try {
+      const gitignoreFile = this.app.vault.getFileByPath(".gitignore");
+      if (gitignoreFile) return await this.app.vault.read(gitignoreFile);
+      if (await this.app.vault.adapter.exists(".gitignore")) {
+        return await this.app.vault.adapter.read(".gitignore");
+      }
+    } catch {
+      // The settings tab shows an empty editor when .gitignore is missing or unreadable.
+    }
+    return null;
+  }
+
+  async writeGitignore(value: string): Promise<void> {
+    await this.app.vault.adapter.write(".gitignore", value);
+  }
+
   async saveSettings(): Promise<void> {
     await this.savePluginData();
     await this.saveLocalSyncState();
