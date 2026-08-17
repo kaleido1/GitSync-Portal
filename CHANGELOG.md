@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.18] - 2026-08-17
+
+### Fixed
+
+- Made the Ignored paths editor span the full settings-pane width, with its label and description above the editor.
+
 ## [2.1.17] - 2026-08-17
 
 ### Fixed

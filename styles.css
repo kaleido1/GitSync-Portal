@@ -13,6 +13,27 @@
   margin-block: var(--ov-reader-paragraph-spacing, 1em);
 }
 
+/* Let the multi-line ignore policy use the full settings-pane width. */
+.gitsync-portal-ignore-paths.setting-item {
+  display: block;
+}
+
+.gitsync-portal-ignore-paths .setting-item-info {
+  margin-bottom: 8px;
+}
+
+.gitsync-portal-ignore-paths .setting-item-control {
+  display: block;
+  width: 100%;
+}
+
+.gitsync-portal-ignore-paths textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+}
+
 .ov-focus-reading .workspace-ribbon.mod-left,
 .ov-focus-reading .workspace-split.mod-left-split,
 .ov-focus-reading .workspace-split.mod-right-split,

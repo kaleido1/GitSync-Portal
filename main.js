@@ -1177,6 +1177,7 @@ var GitSyncPortalSettingTab = class extends import_obsidian2.PluginSettingTab {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
             render: (setting) => {
+              setting.setClass("gitsync-portal-ignore-paths");
               setting.addTextArea((text) => {
                 const setVisibleRows = (value) => {
                   const lineCount = value ? value.split(/\r?\n/).length : 3;

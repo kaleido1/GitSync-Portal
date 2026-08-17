@@ -137,6 +137,7 @@ export class GitSyncPortalSettingTab extends PluginSettingTab {
             name: t("ignoredPaths"),
             desc: t("ignoredPathsDescription"),
             render: (setting) => {
+              setting.setClass("gitsync-portal-ignore-paths");
               setting.addTextArea((text) => {
                 const setVisibleRows = (value: string): void => {
                   const lineCount = value ? value.split(/\r?\n/).length : 3;

@@ -68,7 +68,7 @@ Obsidian downloads the matching `main.js`, `manifest.json`, and optional `styles
 
 ### Manual installation for review or testing
 
-Download the three community-plugin assets from the [2.1.17 release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.17): `main.js`, `manifest.json`, and `styles.css`. Place them in:
+Download the three community-plugin assets from the [2.1.18 release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.18): `main.js`, `manifest.json`, and `styles.css`. Place them in:
 
 ```text
 <Vault>/.obsidian/plugins/gitsync-portal/
