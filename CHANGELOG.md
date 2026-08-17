@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.1.17] - 2026-08-17
+
+### Fixed
+
+- Corrected release-note extraction so tagged releases publish the matching Changelog section.
+
+### Included contributions
+
+- Includes the GitHub Actions workflow upgrades contributed by [@RajnishKMehta](https://github.com/RajnishKMehta) in [PR #9](https://github.com/kaleido1/GitSync-Portal/pull/9).
+
 ## [2.1.16] - 2026-08-17
 
 ### Added

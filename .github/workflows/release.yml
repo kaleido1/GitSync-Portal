@@ -52,7 +52,7 @@ jobs:
       - name: Extract release notes
         run: |
           awk -v heading="## [${{ github.ref_name }}]" '
-            $0 == heading { capture = 1; next }
+            index($0, heading) == 1 { capture = 1; next }
             capture && /^## \[/ { exit }
             capture { print }
           ' CHANGELOG.md > release-notes.md
