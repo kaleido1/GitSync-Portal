@@ -49,6 +49,15 @@ jobs:
             manifest.json
             styles.css
 
+      - name: Extract release notes
+        run: |
+          awk -v heading="## [${{ github.ref_name }}]" '
+            $0 == heading { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,4 +65,4 @@ jobs:
           gh release create "${{ github.ref_name }}"
           main.js manifest.json styles.css
           --title "GitSync Portal ${{ github.ref_name }}"
-          --generate-notes
+          --notes-file release-notes.md

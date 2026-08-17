@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.1.16] - 2026-08-17
+
+### Added
+
+- Added a GitHub Actions workflow that builds, tests, verifies generated assets, and uploads plugin artifacts for every pull request.
+
+### Changed
+
+- The Ignored paths editor now edits and synchronizes `.gitignore` only when that option is enabled; otherwise it remains an editable device-local sync policy.
+- Automatically expand the Ignored paths editor so its configured rules are visible without manual resizing.
+
+### Fixed
+
+- Show the Obsidian Git conflict warning only when Obsidian Git is both installed and enabled.
+
+### Contributors
+
+- Thanks to [@RajnishKMehta](https://github.com/RajnishKMehta) for the GitHub Actions workflow upgrades in [PR #9](https://github.com/kaleido1/GitSync-Portal/pull/9).
+
 ## [2.1.15] - 2026-08-16
 
 ### Changed
