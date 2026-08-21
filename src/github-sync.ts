@@ -291,27 +291,8 @@ export class GitHubSyncService {
     let commitSha = remote.commitSha;
     let pushed = 0;
     if (upload.size) {
-      const entries: TreeEntry[] = [];
-      let index = 0;
-      for (const [path, localFile] of upload) {
-        index++;
-        this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
-        if (!localFile) {
-          entries.push({ path, mode: "100644", type: "blob", sha: null });
-          pushed++;
-          continue;
-        }
-        if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-        const data = await this.readLocalBinary(localFile.path);
-        this.ensureFileSize(localFile.path, data.byteLength);
-        const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
-          content: arrayBufferToBase64(data),
-          encoding: "base64",
-        });
-        entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-        pushed++;
-      }
-
+      const { entries, uploaded, removed } = await this.buildUploadEntries(token, upload);
+      pushed = uploaded + removed;
       if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
     }
 
@@ -415,28 +396,7 @@ export class GitHubSyncService {
     const enabledList = await this.ensureSelfEnabled();
     if (enabledList) upload.set(enabledList.path, enabledList);
 
-    const entries: TreeEntry[] = [];
-    let pushed = 0;
-    let deleted = 0;
-    let index = 0;
-    for (const [path, localFile] of upload) {
-      index++;
-      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
-      if (!localFile) {
-        entries.push({ path, mode: "100644", type: "blob", sha: null });
-        deleted++;
-        continue;
-      }
-      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-      const data = await this.readLocalBinary(localFile.path);
-      this.ensureFileSize(localFile.path, data.byteLength);
-      const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
-        content: arrayBufferToBase64(data),
-        encoding: "base64",
-      });
-      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-      pushed++;
-    }
+    const { entries, uploaded: pushed, removed: deleted } = await this.buildUploadEntries(token, upload);
 
     const commitSha = entries.length
       ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries)
@@ -454,6 +414,32 @@ export class GitHubSyncService {
     };
     this.update("complete", this.plugin.t(result.changed ? "statusCompletePush" : "alreadyInSync"));
     return result;
+  }
+
+  private async buildUploadEntries(token: string, upload: Map<string, LocalFile | null>): Promise<{ entries: TreeEntry[]; uploaded: number; removed: number }> {
+    const entries: TreeEntry[] = [];
+    let uploaded = 0;
+    let removed = 0;
+    let index = 0;
+    for (const [path, localFile] of upload) {
+      index++;
+      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
+      if (!localFile) {
+        entries.push({ path, mode: "100644", type: "blob", sha: null });
+        removed++;
+        continue;
+      }
+      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+      const data = await this.readLocalBinary(localFile.path);
+      this.ensureFileSize(localFile.path, data.byteLength);
+      const blob = await this.api<GitBlob>(token, "POST", "/git/blobs", {
+        content: arrayBufferToBase64(data),
+        encoding: "base64",
+      });
+      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      uploaded++;
+    }
+    return { entries, uploaded, removed };
   }
 
   private async deleteLocalPath(path: string): Promise<boolean> {
@@ -564,15 +550,16 @@ export class GitHubSyncService {
 
   private async getLocalSnapshot(): Promise<Map<string, LocalFile>> {
     const files = await this.listAdapterFiles();
-    const snapshot = new Map<string, LocalFile>();
-    for (let index = 0; index < files.length; index++) {
-      const path = files[index];
-      this.update("scanning", this.plugin.t("statusScanning", { path }), index + 1, files.length);
+    let scanned = 0;
+    const entries = await mapWithConcurrency(files, 8, async (path): Promise<[string, LocalFile]> => {
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
-      snapshot.set(path, { path, sha: await gitBlobSha(data), mtime: await this.getLocalModifiedAt(path) });
-    }
-    return snapshot;
+      const [sha, mtime] = await Promise.all([gitBlobSha(data), this.getLocalModifiedAt(path)]);
+      scanned++;
+      this.update("scanning", this.plugin.t("statusScanning", { path }), scanned, files.length);
+      return [path, { path, sha, mtime }];
+    });
+    return new Map(entries);
   }
 
   private async listAdapterFiles(): Promise<string[]> {

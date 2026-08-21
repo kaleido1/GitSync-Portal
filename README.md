@@ -1,204 +1,158 @@
 # GitSync Portal
 
-GitSync Portal is a native Obsidian plugin for two-way GitHub synchronization on Android, iOS, Windows, macOS, and Linux. It also provides a multilingual vault dashboard with full-text search, favorites, reading history, reader controls, and interactive quizzes.
+GitSync Portal is a native Obsidian plugin that syncs your vault through GitHub — no system Git, Node.js, or shell commands required — and pairs it with a multilingual dashboard for search, favorites, reading history, and interactive quizzes.
 
-Current version: `2.1.17`
+Works the same way on **Android, iOS, Windows, macOS, and Linux**.
 
 > GitSync Portal is an independent community project. It is not affiliated with or endorsed by Obsidian.
-
-## Preview
-
-The dashboard keeps sync controls, the current note, favorites, and recent reading within reach.
 
 <p align="center">
   <img src="assets/screenshots/dashboard-desktop.png" alt="GitSync Portal dashboard in Obsidian on desktop" width="100%">
 </p>
 
+## Quick start
+
+1. Install GitSync Portal (see [Installation](#installation) below).
+2. Create a GitHub [fine-grained personal access token](https://github.com/settings/tokens?type=beta) scoped to one repository, with **Contents: Read and write** permission.
+3. Open **Settings → GitSync Portal**, and enter the token, the repository as `owner/repository`, and a branch.
+4. Click **Test connection**, then run a manual sync and confirm the result.
+5. Once you're happy with it, turn on startup, save-triggered, or periodic sync.
+
 ## Highlights
 
-- Two-way GitHub synchronization without system Git, Node.js, Electron, or platform-specific shell commands
-- One implementation for Android, iOS, Windows, macOS, and Linux
-- Three-way reconciliation based on the last synchronized commit
-- Two-way, pull-only, and push-only manual actions
-- Mass-deletion safeguards and conflict-copy loop prevention
-- Upload, download, and deletion propagation
-- Newer-version conflict resolution with preserved `.conflict-…` copies
-- Automatic retries that wait for the remote branch to settle after a concurrent update
-- A synchronization queue shared by manual and automatic triggers, so requests wait instead of competing
-- Trailing 30-second save-triggered synchronization after the latest favorite or history change
-- Startup, save-triggered, manual, and periodic sync modes
-- Fine-grained GitHub token storage through Obsidian `SecretStorage`
-- Vault dashboard with folders, files, search, favorites, history, and an outline
-- Reader font size, line height, width, paragraph spacing, and focus mode
-- Seven Quizzable question types with saved local progress
-- Per-question retry, answer explanations, and reliable multi-row matching answers
-- Plugin language setting with system-language detection
-- Selected-file highlighting and scroll-position preservation during dashboard refreshes
+**Sync**
+- Two-way GitHub sync using Obsidian's HTTP APIs — works identically on mobile and desktop
+- Three-way reconciliation against the last synced commit, with two-way, pull-only, and push-only modes
+- Newer-version-wins conflict resolution; the older copy is kept as a `.conflict-…` file, never lost
+- Mass-deletion safeguard, conflict-copy loop prevention, and automatic retries when the remote branch moves mid-sync
+- One sync queue shared by manual, startup, save-triggered, and periodic triggers — requests wait their turn instead of racing
+- GitHub token stored in Obsidian's `SecretStorage`, never written to `data.json` or the vault
 
-## Languages
+**Dashboard**
+- Home, Files, Favorites, and History tabs with folder navigation, breadcrumbs, and back/forward
+- Filename and full note-body search with IME-safe input
+- Current-note heading outline, favorite/home-note shortcuts, and selected-file highlighting
+- Scroll position and sync progress preserved across dashboard refreshes
 
-GitSync Portal can follow the language selected in Obsidian or use an explicit language from the plugin settings.
+**Quizzes**
+- Seven Quizzable question types (multiple choice, true/false, multiple select, short text, numeric, matching, reorder)
+- Saved per-device progress, per-question retry, and answer explanations
 
-The language selector closely follows commonly supported Obsidian locales:
-
-- English and English (UK)
-- 简体中文 and 繁體中文
-- 日本語 and 한국어
-- Español, Deutsch, Italiano, and Français
-- العربية and বাংলা
-- Nederlands, Polski, Português, and Português do Brasil
-- Română, Русский, Svenska, Türkçe, Українська, and Tiếng Việt
-
-English and Simplified Chinese cover the full interface. Traditional Chinese, Japanese, Korean, Spanish, German, and Italian provide broad dashboard, settings, synchronization, and quiz coverage. Other listed locales translate navigation and the main synchronization controls. Every language falls back safely to English for text not yet localized.
-
-Change the language under **Obsidian → Settings → GitSync Portal → Language**. The dashboard updates immediately. Command names are registered when the plugin loads, so reload Obsidian after changing language if you also want Command Palette entries to update.
+**Reading & language**
+- Adjustable font size, line height, content width, paragraph spacing, and a focus mode
+- Follows Obsidian's language setting automatically, or pick one explicitly — see [Languages](#languages)
 
 ## Installation
 
-### Obsidian Community Plugins
-
-After GitSync Portal is approved in the community directory:
+### Community Plugins (recommended)
 
 1. Open **Settings → Community plugins** and turn on community plugins.
-2. Select **Browse** and search for **GitSync Portal**.
-3. Select **Install**, then **Enable**.
-4. Open **Settings → GitSync Portal** to configure GitHub synchronization.
+2. Select **Browse**, search for **GitSync Portal**, then **Install** and **Enable**.
+3. Open **Settings → GitSync Portal** and follow the [Quick start](#quick-start) above.
 
-Obsidian downloads the matching `main.js`, `manifest.json`, and optional `styles.css` files from the GitHub release automatically. See [INSTALL.md](INSTALL.md) for upgrade and configuration details.
+### Manual install
 
-### Manual installation for review or testing
-
-Download the three community-plugin assets from the [2.1.18 release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.18): `main.js`, `manifest.json`, and `styles.css`. Place them in:
+Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/kaleido1/GitSync-Portal/releases/latest) into:
 
 ```text
 <Vault>/.obsidian/plugins/gitsync-portal/
 ```
 
-Reload Obsidian and enable **GitSync Portal** under **Settings → Community plugins**. Do not use a nested directory or a ZIP archive.
+Reload Obsidian and enable **GitSync Portal** under **Settings → Community plugins**. Don't nest the files in a subfolder or install from a ZIP.
 
-## Upgrading from an earlier name
+Platform-specific steps (showing hidden folders on Windows/macOS/Android, iOS caveats) and upgrading from the plugin's earlier names (`gitsync-port`, `obsidian-viewer`) are covered in [INSTALL.md](INSTALL.md).
 
-GitSync Portal uses the plugin ID `gitsync-portal`. Earlier releases used `gitsync-port` or `obsidian-viewer`, so install it as a renamed plugin instead of overwriting an old directory.
+## Languages
 
-1. Disable the earlier plugin.
-2. Install GitSync Portal into `.obsidian/plugins/gitsync-portal/`.
-3. Keep `.obsidian/plugins/gitsync-port/` or `.obsidian/plugins/obsidian-viewer/` temporarily for the first launch.
-4. Enable GitSync Portal and reload Obsidian.
-5. Confirm that the home note, reader settings, favorites, history, sync baseline, and GitHub connection are present.
-6. Remove the old plugin only after verification.
+GitSync Portal can follow Obsidian's language setting (**System default**) or use a language you pick explicitly, under **Settings → GitSync Portal → Language**. The dashboard updates immediately; reload Obsidian to also refresh Command Palette entry names.
 
-On first load, GitSync Portal reads legacy settings, shared favorites/history, local synchronization state, and SecretStorage tokens when new data does not exist. It checks `gitsync-port` first, then `obsidian-viewer`, writes future state under `gitsync-portal`, and ignores both legacy plugin directories during synchronization.
+| Coverage | Languages |
+|---|---|
+| Full interface | English, Simplified Chinese |
+| Broad coverage (dashboard, settings, sync, quizzes) | Traditional Chinese, Japanese, Korean, Spanish, German, Italian |
+| Navigation and core sync controls | French, Arabic, Bengali, Dutch, Polish, Portuguese, Portuguese (Brazil), Romanian, Russian, Swedish, Turkish, Ukrainian, Vietnamese |
 
-## GitHub synchronization setup
+Any text not yet translated for a language falls back to English automatically.
 
-1. Create a fine-grained personal access token that can access only the target vault repository.
-2. Grant `Contents: Read and write` repository permission.
-3. Open **Obsidian → Settings → GitSync Portal**.
-4. Enter the token, `owner/repository`, and branch.
-5. Select **Test connection**, then run the first two-way sync manually.
-6. Verify the result before enabling startup, save-triggered, or periodic sync.
+## How GitHub sync works
 
-An entirely new GitHub repository is supported: the first two-way sync creates its initial commit and configured branch from the local vault. A local vault restored without files should use **Pull only** when the remote already contains commits.
+**First sync.** Files that exist on only one side are copied to the other — nothing is deleted on a first sync. A brand-new, empty GitHub repository is fine: the first two-way sync creates its initial commit from the local vault. Restoring a vault from scratch onto an existing repository should use **Pull only**.
 
-The first sync keeps files that exist on only one side. If both sides changed the same path, GitSync Portal compares the local modification time with the latest remote commit for that path. The newer version becomes the main file and the older version is preserved as a device- and timestamp-labelled conflict copy.
+**Conflicts.** If the same path changed on both sides, GitSync Portal compares the local modification time against the latest remote commit for that path. The newer version wins and becomes the main file; the older version is kept as a device- and timestamp-labeled `.conflict-…` copy, which is excluded from future syncs so it can't loop back in as a conflict itself.
 
-The dashboard keeps two-way sync as the primary action and places **Pull only** and **Push only** underneath as secondary actions. Pull-only applies remote changes without uploading and preserves displaced local content. Push-only uploads local changes without applying remote changes and preserves displaced remote content. Generated conflict copies are excluded from later synchronization passes so they cannot create a conflict loop.
+**Two-way vs. one-directional.** The dashboard's primary action is two-way sync, with **Pull only** and **Push only** as secondary actions:
+- *Pull only* applies remote changes locally without uploading; displaced local content becomes a conflict copy.
+- *Push only* uploads local changes without applying remote changes; displaced remote content becomes a conflict copy. It also always publishes locally installed community plugin files that differ from the remote copy, so a plugin installed or updated on desktop reaches mobile on its next pull.
 
-Push-only always publishes locally installed community plugin files when they differ from the remote repository. This makes desktop plugin installs and upgrades available to mobile devices on their next pull-only sync. Explicitly ignored runtime and device-local files remain excluded.
+**`.gitignore`.** GitSync Portal reads the vault's root `.gitignore` on every connection test and sync.
+- With **Use .gitignore** on, the **Ignored paths** editor shows and edits that file, and it syncs like any other file.
+- With it off, `.gitignore` stays device-local, and **Ignored paths** becomes a separate, device-local ignore list.
+- **Apply .gitignore when pulling** (off by default) additionally hides matching remote paths from pull and conflict reconciliation — so a local-only `.gitignore` doesn't silently block incoming changes unless you opt in.
 
-GitSync Portal reads the vault's root `.gitignore` on each connection test and sync. When **Use .gitignore** is on, the **Ignored paths** editor shows and writes that file; the file and its rules are synchronized. When it is off, `.gitignore` stays device-local and **Ignored paths** remains editable as a device-local sync policy without changing the file. Turning it back on reloads the editor from `.gitignore`. **Apply .gitignore when pulling** is a separate, opt-in setting: when enabled, matching remote paths are also hidden from pull and conflict reconciliation. The setting is off by default so a local `.gitignore` does not silently prevent remote changes from being downloaded.
+**Retries.** If the remote branch changes while GitSync Portal is committing, it waits briefly, re-reads the branch head, and retries. If the change touched the same path being pushed, it re-reconciles instead of forcing the push.
 
-`.obsidian/community-plugins.json` follows the same `.gitignore` rules as every other path. Keep it out of `.gitignore` when community-plugin enablement should synchronize; add a matching rule when it should remain device-local.
+**Queueing.** Manual, startup, save-triggered, and periodic sync requests share one queue: a request that arrives mid-sync waits for the current one to finish rather than racing it. With **Sync on save** enabled, favorite/history changes restart a trailing 30-second timer, so a burst of edits triggers only one sync.
 
-If the remote branch changes during the final commit, GitSync Portal waits briefly for the remote update to settle, reads the new branch head, and retries. If the same path changed remotely, it returns to reconciliation instead of forcing the reference.
+## What gets synced
 
-Manual, startup, save-triggered, and periodic sync requests share one queue. A request received while another sync is still saving settings, communicating with GitHub, or applying changes waits until the current task finishes instead of starting a competing attempt. The queue advances after both successful and failed syncs.
-
-When **Sync on save** is enabled, changes to favorites or reading history restart a trailing 30-second timer. Synchronization starts only after 30 seconds without another tracked-state change; if a sync is still running at that point, the pending synchronization waits until the lock is available.
-
-## What is synchronized
-
-The sync engine enumerates the vault locally through Obsidian's cross-platform Vault Adapter so it can compare files against the configured GitHub repository. It only uploads files that are included by the ignore rules below, and it never sends the GitHub token. It can synchronize:
-
+Included by default:
 - Markdown notes and attachments
 - `.gitignore`
 - Obsidian themes and CSS snippets
-- Community plugin files and settings
-- Core and community plugin enablement lists
-- GitSync Portal program files
-- Shared favorites and reading history in `sync-state.json`
+- Community plugin files, settings, and enablement lists
+- GitSync Portal's own program files
+- Shared favorites and reading history (`sync-state.json`)
 
-The following stay device-local by default:
-
+Device-local by default:
 - Workspace layout files
-- GitSync Portal's local synchronization baseline
-- GitSync Portal conflict copies
+- GitSync Portal's local sync baseline and generated conflict copies
 - Obsidian Git runtime scripts
-- The legacy `.obsidian/plugins/gitsync-port/` and `.obsidian/plugins/obsidian-viewer/` migration directories
+- Legacy `gitsync-port`/`obsidian-viewer` migration directories
 
-The vault's `.git/` database and `.trash/` directory are always excluded. The GitHub token is stored in Obsidian SecretStorage and is not a vault file.
+Always excluded: the vault's `.git/` database and `.trash/` directory. The GitHub token lives in Obsidian `SecretStorage`, not in the vault, so it is never uploaded.
 
-If Obsidian Git is installed in the same vault, enable automatic synchronization in only one plugin. Two independent engines updating the same branch can race.
-
-## Dashboard and reading tools
-
-The left-sidebar dashboard provides:
-
-- Home, Files, Favorites, and History tabs
-- Directory navigation with back, forward, parent, and breadcrumb controls
-- Filename and Markdown-body search with IME-safe input handling
-- A visible selected state for the active file
-- Preserved scroll position when the dashboard refreshes
-- Current-note favorite and home-note actions
-- GitHub synchronization status and progress
-- Current-note heading navigation
-- Batched history rendering for responsive navigation even with a large history limit
-
-GitSync Portal uses Obsidian's native Markdown rendering, Wiki Links, embeds, Properties, Callouts, Mermaid, KaTeX, syntax highlighting, CSS snippets, and installed Dataview support.
+> If [Obsidian Git](https://github.com/denolehov/obsidian-git) is installed in the same vault, enable automatic sync in only one of the two plugins — two engines pushing to the same branch can race each other.
 
 ## Development
 
-Node.js 18 or newer is required:
+Requires Node.js 18+.
 
 ```bash
 npm install
 npm test
 ```
 
-`npm test` performs a TypeScript production build, release metadata validation, synchronization-core tests, and localization tests.
-
-Development mode:
+`npm test` runs lint, a TypeScript production build, release-metadata validation, and the sync/settings/i18n test suites.
 
 ```bash
-npm run dev
+npm run dev   # watch mode
 ```
 
-Project structure:
+Project layout:
 
 ```text
-main.ts                 Plugin entry point, settings, migration, and lifecycle
-src/i18n.ts             Language registry, translations, and locale resolution
-src/viewer-view.ts      Dashboard and file navigation
-src/settings.ts         Plugin settings interface
-src/github-sync.ts      Cross-platform GitHub synchronization
-src/quiz.ts             Quizzable parsing, rendering, and scoring
-styles.css              Desktop and mobile styles
-scripts/test-sync.mjs   Synchronization-core tests
-scripts/test-i18n.mjs   Language and fallback tests
+main.ts                 Plugin entry point, settings, migration, lifecycle
+src/github-sync.ts       Cross-platform GitHub synchronization engine
+src/viewer-view.ts       Dashboard and file navigation
+src/settings.ts          Plugin settings tab
+src/quiz.ts              Quizzable parsing, rendering, and scoring
+src/i18n.ts              Language registry, translations, locale resolution
+styles.css                Desktop and mobile styles
+scripts/                  Build/release checks and test scripts
 ```
 
 ## Privacy and security
 
-- Reading, search, favorites, history, and quizzes operate locally.
-- GitHub is contacted only after synchronization is configured and triggered.
+- Reading, search, favorites, history, and quizzes all work locally — no network access.
+- GitHub is contacted only once sync is configured and triggered.
 - The GitHub token is never written to `data.json`, logs, release archives, or the vault.
-- Oversized files stop the sync instead of being silently skipped.
-- Conflict copies preserve displaced content and are excluded from future scans by default.
+- Files over the configured size limit stop the sync with an error instead of being silently skipped.
+- Conflict copies preserve displaced content and are excluded from future sync passes by default.
 
 ## Project history
 
-This repository was initially based on `MorganTian886/Obsidian_Viewer`. The Git history retains the original authorship and contribution record. The cross-platform native plugin rewrite and subsequent releases are independently maintained by [Kai Liu](https://github.com/kaleido1).
+This repository originated from `MorganTian886/Obsidian_Viewer`; the Git history retains the original authorship. The cross-platform rewrite and all releases since are independently maintained by [Kai Liu](https://github.com/kaleido1).
 
 ## License
 
-GitSync Portal is released under the [MIT License](LICENSE).
+[MIT](LICENSE)

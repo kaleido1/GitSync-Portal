@@ -37,7 +37,7 @@ export class GitSyncPortalDashboardView extends ItemView {
   }
 
   getIcon(): string {
-    return "library";
+    return "cloud-cog";
   }
 
   async onOpen(): Promise<void> {

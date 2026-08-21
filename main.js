@@ -527,7 +527,7 @@ var GitSyncPortalDashboardView = class extends import_obsidian.ItemView {
     return this.plugin.t("appName");
   }
   getIcon() {
-    return "library";
+    return "cloud-cog";
   }
   async onOpen() {
     this.contentEl.addClass("ov-dashboard");
@@ -1875,26 +1875,8 @@ var GitHubSyncService = class {
     let commitSha = remote.commitSha;
     let pushed = 0;
     if (upload.size) {
-      const entries = [];
-      let index = 0;
-      for (const [path, localFile] of upload) {
-        index++;
-        this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
-        if (!localFile) {
-          entries.push({ path, mode: "100644", type: "blob", sha: null });
-          pushed++;
-          continue;
-        }
-        if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-        const data = await this.readLocalBinary(localFile.path);
-        this.ensureFileSize(localFile.path, data.byteLength);
-        const blob = await this.api(token, "POST", "/git/blobs", {
-          content: (0, import_obsidian4.arrayBufferToBase64)(data),
-          encoding: "base64"
-        });
-        entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-        pushed++;
-      }
+      const { entries, uploaded, removed } = await this.buildUploadEntries(token, upload);
+      pushed = uploaded + removed;
       if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
     }
     const result = {
@@ -1971,28 +1953,7 @@ var GitHubSyncService = class {
     }
     const enabledList = await this.ensureSelfEnabled();
     if (enabledList) upload.set(enabledList.path, enabledList);
-    const entries = [];
-    let pushed = 0;
-    let deleted = 0;
-    let index = 0;
-    for (const [path, localFile] of upload) {
-      index++;
-      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
-      if (!localFile) {
-        entries.push({ path, mode: "100644", type: "blob", sha: null });
-        deleted++;
-        continue;
-      }
-      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
-      const data = await this.readLocalBinary(localFile.path);
-      this.ensureFileSize(localFile.path, data.byteLength);
-      const blob = await this.api(token, "POST", "/git/blobs", {
-        content: (0, import_obsidian4.arrayBufferToBase64)(data),
-        encoding: "base64"
-      });
-      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-      pushed++;
-    }
+    const { entries, uploaded: pushed, removed: deleted } = await this.buildUploadEntries(token, upload);
     const commitSha = entries.length ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries) : remote.commitSha;
     const conflicts = plan.conflicts.length;
     const result = {
@@ -2007,6 +1968,31 @@ var GitHubSyncService = class {
     };
     this.update("complete", this.plugin.t(result.changed ? "statusCompletePush" : "alreadyInSync"));
     return result;
+  }
+  async buildUploadEntries(token, upload) {
+    const entries = [];
+    let uploaded = 0;
+    let removed = 0;
+    let index = 0;
+    for (const [path, localFile] of upload) {
+      index++;
+      this.update("pushing", this.plugin.t("statusPushing", { path }), index, upload.size);
+      if (!localFile) {
+        entries.push({ path, mode: "100644", type: "blob", sha: null });
+        removed++;
+        continue;
+      }
+      if (!await this.plugin.app.vault.adapter.exists(localFile.path)) continue;
+      const data = await this.readLocalBinary(localFile.path);
+      this.ensureFileSize(localFile.path, data.byteLength);
+      const blob = await this.api(token, "POST", "/git/blobs", {
+        content: (0, import_obsidian4.arrayBufferToBase64)(data),
+        encoding: "base64"
+      });
+      entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      uploaded++;
+    }
+    return { entries, uploaded, removed };
   }
   async deleteLocalPath(path) {
     const existing = this.plugin.app.vault.getFileByPath(path);
@@ -2110,15 +2096,16 @@ var GitHubSyncService = class {
   }
   async getLocalSnapshot() {
     const files = await this.listAdapterFiles();
-    const snapshot = /* @__PURE__ */ new Map();
-    for (let index = 0; index < files.length; index++) {
-      const path = files[index];
-      this.update("scanning", this.plugin.t("statusScanning", { path }), index + 1, files.length);
+    let scanned = 0;
+    const entries = await mapWithConcurrency(files, 8, async (path) => {
       const data = await this.readLocalBinary(path);
       this.ensureFileSize(path, data.byteLength);
-      snapshot.set(path, { path, sha: await gitBlobSha(data), mtime: await this.getLocalModifiedAt(path) });
-    }
-    return snapshot;
+      const [sha, mtime] = await Promise.all([gitBlobSha(data), this.getLocalModifiedAt(path)]);
+      scanned++;
+      this.update("scanning", this.plugin.t("statusScanning", { path }), scanned, files.length);
+      return [path, { path, sha, mtime }];
+    });
+    return new Map(entries);
   }
   async listAdapterFiles() {
     const output = [];
@@ -4037,7 +4024,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     this.registerView(VIEW_TYPE_GITSYNC_PORTAL, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.registerView(LEGACY_VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortalDashboardView(leaf, this));
-    this.addRibbonIcon("refresh-cw", this.t("openDashboard"), () => void this.activateDashboard());
+    this.addRibbonIcon("cloud-cog", this.t("openDashboard"), () => void this.activateDashboard());
     this.addCommand({
       id: "open-dashboard",
       name: this.t("openReadingDashboard"),
@@ -4277,10 +4264,10 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     activeDocument.body.style.setProperty("--ov-reader-paragraph-spacing", `${this.settings.paragraphSpacing}em`);
   }
   async activateDashboard() {
-    var _a, _b, _c;
-    let leaf = (_b = (_a = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL)[0]) != null ? _a : this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT)[0]) != null ? _b : this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
+    var _a;
+    let leaf = this.dashboardLeaves()[0];
     if (!leaf) {
-      leaf = (_c = this.app.workspace.getLeftLeaf(false)) != null ? _c : this.app.workspace.getLeaf("tab");
+      leaf = (_a = this.app.workspace.getLeftLeaf(false)) != null ? _a : this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
     }
     void this.app.workspace.revealLeaf(leaf);
@@ -4368,12 +4355,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     }, 250);
   }
   async refreshDashboard() {
-    const leaves = [
-      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
-      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
-      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)
-    ];
-    await Promise.all(leaves.map((leaf) => {
+    await Promise.all(this.dashboardLeaves().map((leaf) => {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
@@ -4386,15 +4368,17 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     }, 0);
   }
   updateDashboardSyncStatus() {
-    const leaves = [
+    this.dashboardLeaves().forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
+    });
+  }
+  dashboardLeaves() {
+    return [
       ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)
     ];
-    leaves.forEach((leaf) => {
-      const view = leaf.view;
-      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
-    });
   }
   scheduleSyncOnSave() {
     if (!this.settings.syncOnSave || !this.getGitHubToken()) return;

@@ -5,6 +5,7 @@ import {
   TAbstractFile,
   TFile,
   TFolder,
+  WorkspaceLeaf,
   normalizePath,
 } from "obsidian";
 import { GitSyncPortalDashboardView, LEGACY_VIEW_TYPE_GITSYNC_PORT, LEGACY_VIEW_TYPE_VIEWER, VIEW_TYPE_GITSYNC_PORTAL } from "./src/viewer-view";
@@ -113,7 +114,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.registerView(VIEW_TYPE_GITSYNC_PORTAL, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.registerView(LEGACY_VIEW_TYPE_GITSYNC_PORT, (leaf) => new GitSyncPortalDashboardView(leaf, this));
     this.registerView(LEGACY_VIEW_TYPE_VIEWER, (leaf) => new GitSyncPortalDashboardView(leaf, this));
-    this.addRibbonIcon("refresh-cw", this.t("openDashboard"), () => void this.activateDashboard());
+    this.addRibbonIcon("cloud-cog", this.t("openDashboard"), () => void this.activateDashboard());
 
     this.addCommand({
       id: "open-dashboard",
@@ -383,9 +384,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   async activateDashboard(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL)[0]
-      ?? this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT)[0]
-      ?? this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER)[0];
+    let leaf = this.dashboardLeaves()[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeftLeaf(false) ?? this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE_GITSYNC_PORTAL, active: true });
@@ -495,12 +494,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   private async refreshDashboard(): Promise<void> {
-    const leaves = [
-      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
-      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
-      ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER),
-    ];
-    await Promise.all(leaves.map((leaf) => {
+    await Promise.all(this.dashboardLeaves().map((leaf) => {
       const view = leaf.view;
       return view instanceof GitSyncPortalDashboardView ? view.render() : Promise.resolve();
     }));
@@ -515,15 +509,18 @@ export default class GitSyncPortalPlugin extends Plugin {
   }
 
   private updateDashboardSyncStatus(): void {
-    const leaves = [
+    this.dashboardLeaves().forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
+    });
+  }
+
+  private dashboardLeaves(): WorkspaceLeaf[] {
+    return [
       ...this.app.workspace.getLeavesOfType(VIEW_TYPE_GITSYNC_PORTAL),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_GITSYNC_PORT),
       ...this.app.workspace.getLeavesOfType(LEGACY_VIEW_TYPE_VIEWER),
     ];
-    leaves.forEach((leaf) => {
-      const view = leaf.view;
-      if (view instanceof GitSyncPortalDashboardView) view.updateSyncStatus();
-    });
   }
 
   private scheduleSyncOnSave(): void {

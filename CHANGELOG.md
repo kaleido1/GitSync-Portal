@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.19] - 2026-08-21
+
+### Changed
+
+- Unified the ribbon icon and the dashboard's sidebar tab icon so both use the same icon.
+- Simplified dashboard leaf lookup and GitHub sync upload-entry building to remove duplicated code, and parallelized local file hashing during sync scans.
+- Rewrote README.md for clarity and fixed a stale release link in INSTALL.md.
+
 ## [2.1.18] - 2026-08-17
 
 ### Fixed

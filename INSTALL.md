@@ -8,7 +8,7 @@ After GitSync Portal is available in the Obsidian Community Plugins directory, o
 
 ## Manual review installation
 
-Download `main.js`, `manifest.json`, and `styles.css` from the [GitHub release](https://github.com/kaleido1/GitSync-Portal/releases/tag/2.1.15) and place them directly in:
+Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/kaleido1/GitSync-Portal/releases/latest) and place them directly in:
 
 ```text
 <Vault>/.obsidian/plugins/gitsync-portal/
