@@ -62,9 +62,19 @@ interface GitBlob {
 
 interface GitHubPathCommit {
   commit?: {
+    message?: string;
     author?: { date?: string };
     committer?: { date?: string };
   };
+}
+
+interface GitHubComparison {
+  status: "diverged" | "ahead" | "behind" | "identical";
+}
+
+interface RemoteModification {
+  timestamp: number;
+  fromThisDevice: boolean;
 }
 
 interface RemoteFile {
@@ -213,9 +223,7 @@ export class GitHubSyncService {
 
   private async syncAttempt(token: string, branch: string, mode: GitHubSyncMode = "two-way"): Promise<GitHubSyncResult> {
     const remote = await this.getHead(token, branch);
-    const base = this.plugin.settings.lastSyncedCommit
-      ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit)
-      : null;
+    const base = await this.resolveBaseSnapshot(token, remote);
 
     this.update("scanning", this.plugin.t("statusHashing"));
     const local = await this.getLocalSnapshot();
@@ -238,15 +246,19 @@ export class GitHubSyncService {
 
     const conflictDecisions = await mapWithConcurrency(plan.conflicts, 6, async (conflict) => ({
       conflict,
-      remoteModifiedAt: await this.getRemoteModifiedAt(token, branch, conflict.path),
+      remoteModification: await this.getRemoteModification(token, branch, conflict.path),
     }));
-    for (const { conflict, remoteModifiedAt } of conflictDecisions) {
+    for (const { conflict, remoteModification } of conflictDecisions) {
       if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
         upload.set(conflict.path, conflict.local);
         protectedConflicts.add(conflict.path);
         continue;
       }
-      if (conflict.local.mtime >= remoteModifiedAt) {
+      // When the latest remote change to this path was pushed by this device,
+      // the local file is a continuation of that push. Keep it as the main
+      // file rather than trusting a cross-clock timestamp comparison, which can
+      // replace the user's newest edits with an older copy of their own work.
+      if (remoteModification.fromThisDevice || conflict.local.mtime >= remoteModification.timestamp) {
         upload.set(conflict.path, conflict.local);
         localWins.add(conflict.path);
         if (conflict.remote) {
@@ -293,7 +305,7 @@ export class GitHubSyncService {
     if (upload.size) {
       const { entries, uploaded, removed } = await this.buildUploadEntries(token, upload);
       pushed = uploaded + removed;
-      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
+      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries, true);
     }
 
     const result: GitHubSyncResult = {
@@ -399,7 +411,9 @@ export class GitHubSyncService {
     const { entries, uploaded: pushed, removed: deleted } = await this.buildUploadEntries(token, upload);
 
     const commitSha = entries.length
-      ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries)
+      // Push-only does not pull remote changes, so its commit must never become
+      // the two-way baseline.
+      ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries, false)
       : remote.commitSha;
     const conflicts = plan.conflicts.length;
     const result: GitHubSyncResult = {
@@ -455,7 +469,13 @@ export class GitHubSyncService {
     return false;
   }
 
-  private async pushEntriesWithRemoteRetry(token: string, branch: string, plannedRemote: RemoteSnapshot, entries: TreeEntry[]): Promise<string> {
+  private async pushEntriesWithRemoteRetry(
+    token: string,
+    branch: string,
+    plannedRemote: RemoteSnapshot,
+    entries: TreeEntry[],
+    recordPendingBaseline: boolean,
+  ): Promise<string> {
     let remote = plannedRemote;
     let latestRemoteChange: RemoteChangedDuringSyncError | null = null;
     for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
@@ -465,6 +485,17 @@ export class GitHubSyncService {
         remote = await this.getHead(token, branch);
         if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
           throw new RemoteChangedDuringSyncError(this.plugin.t("remoteSamePathChanged"));
+        }
+        // Any other remote movement means the new commit would be built on a
+        // tree this device has not pulled. Recording that commit as the
+        // baseline would make the unpulled remote changes look already synced,
+        // and the next sync would upload stale local content over them.
+        // Restart the whole sync instead so those changes are pulled first.
+        // This also covers a previous ref update that succeeded on GitHub but
+        // whose response was lost: the head is now our own commit, and the
+        // restarted sync adopts it through the pending baseline.
+        if (remote.commitSha !== plannedRemote.commitSha) {
+          throw new RemoteChangedDuringSyncError(this.plugin.t("remoteChanged", { detail: "" }));
         }
       }
       try {
@@ -477,6 +508,11 @@ export class GitHubSyncService {
           tree: tree.sha,
           ...(remote.commitSha ? { parents: [remote.commitSha] } : {}),
         });
+        // Persist the commit before moving the branch. If the ref update lands
+        // on GitHub but its response is lost, the next sync can still use this
+        // commit as its baseline instead of mistaking its own push for a remote
+        // edit and creating a conflict.
+        if (recordPendingBaseline) await this.plugin.recordPendingSyncCommit(commit.sha);
         if (remote.commitSha) {
           await this.api<GitReference>(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
             sha: commit.sha,
@@ -526,12 +562,47 @@ export class GitHubSyncService {
     }
   }
 
+  private async resolveBaseSnapshot(token: string, remote: RemoteSnapshot): Promise<RemoteSnapshot | null> {
+    const lastSynced = this.plugin.settings.lastSyncedCommit;
+    const pending = this.plugin.settings.pendingSyncCommit;
+    // A pending commit is one this device created and tried to publish. If it
+    // is part of the remote branch, the push landed even though the sync did
+    // not finish, so it is the true baseline.
+    if (pending && pending !== lastSynced && remote.commitSha && await this.isInRemoteHistory(token, pending, remote.commitSha)) {
+      const pendingSnapshot = await this.tryGetSnapshot(token, pending);
+      if (pendingSnapshot) return pendingSnapshot;
+    }
+    return lastSynced ? this.tryGetSnapshot(token, lastSynced) : null;
+  }
+
+  private async isInRemoteHistory(token: string, commitSha: string, headSha: string): Promise<boolean> {
+    if (!/^[0-9a-f]{40}$/i.test(commitSha)) return false;
+    if (commitSha === headSha) return true;
+    try {
+      const comparison = await this.api<GitHubComparison>(
+        token,
+        "GET",
+        `/compare/${encodeURIComponent(commitSha)}...${encodeURIComponent(headSha)}`,
+      );
+      return comparison.status === "ahead" || comparison.status === "identical";
+    } catch (error) {
+      if (isNotFoundError(error)) return false;
+      throw error;
+    }
+  }
+
   private async tryGetSnapshot(token: string, commitSha: string): Promise<RemoteSnapshot | null> {
     if (!/^[0-9a-f]{40}$/i.test(commitSha)) return null;
     try {
       return await this.getSnapshot(token, commitSha);
-    } catch {
-      return null;
+    } catch (error) {
+      // Only a baseline that no longer exists (for example after a force push)
+      // may fall back to a baseline-free reconcile. Network errors, rate limits,
+      // and server errors must abort the sync: without a baseline every
+      // unsynced local edit is classified as a conflict, and the timestamp
+      // tie-break can then overwrite the user's newest text.
+      if (isNotFoundError(error)) return null;
+      throw error;
     }
   }
 
@@ -637,14 +708,18 @@ export class GitHubSyncService {
     }
   }
 
-  private async getRemoteModifiedAt(token: string, branch: string, path: string): Promise<number> {
+  private async getRemoteModification(token: string, branch: string, path: string): Promise<RemoteModification> {
     try {
       const commits = await this.api<GitHubPathCommit[]>(token, "GET", `/commits?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(path)}&per_page=1`);
       const date = commits[0]?.commit?.committer?.date ?? commits[0]?.commit?.author?.date ?? "";
       const timestamp = Date.parse(date);
-      return Number.isFinite(timestamp) ? timestamp : 0;
+      const message = commits[0]?.commit?.message ?? "";
+      return {
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        fromThisDevice: message.startsWith(this.commitMessagePrefix()),
+      };
     } catch {
-      return 0;
+      return { timestamp: 0, fromThisDevice: false };
     }
   }
 
@@ -755,9 +830,13 @@ export class GitHubSyncService {
     }));
   }
 
-  private commitMessage(): string {
+  private commitMessagePrefix(): string {
     const device = this.plugin.settings.syncDeviceName.trim() || "Obsidian";
-    return `Vault sync from ${device} at ${new Date().toISOString()}`;
+    return `Vault sync from ${device} at `;
+  }
+
+  private commitMessage(): string {
+    return `${this.commitMessagePrefix()}${new Date().toISOString()}`;
   }
 
   private async api<T>(token: string, method: string, endpoint: string, body?: unknown): Promise<T> {
@@ -788,7 +867,7 @@ export class GitHubSyncService {
     }
     if (response.status === 401) throw new Error(this.plugin.t("tokenInvalid"));
     if (response.status === 403) throw new Error(this.plugin.t("tokenForbidden"));
-    if (response.status === 404) throw new Error(this.plugin.t("repositoryNotFound"));
+    if (response.status === 404) throw new NotFoundError(this.plugin.t("repositoryNotFound"));
     if ((response.status === 409 || response.status === 422) && /git repository is empty/i.test(apiMessage)) {
       throw new EmptyRepositoryError();
     }
@@ -953,6 +1032,13 @@ class RemoteChangedDuringSyncError extends Error {
   }
 }
 
+class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
 class EmptyRepositoryError extends Error {
   constructor() {
     super("Git Repository is empty");
@@ -982,6 +1068,11 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
 function isRemoteChangedDuringSync(error: unknown): error is RemoteChangedDuringSyncError {
   return error instanceof RemoteChangedDuringSyncError
     || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
+}
+
+function isNotFoundError(error: unknown): error is NotFoundError {
+  return error instanceof NotFoundError
+    || error instanceof Error && error.name === "NotFoundError";
 }
 
 function isEmptyRepositoryError(error: unknown): error is EmptyRepositoryError {

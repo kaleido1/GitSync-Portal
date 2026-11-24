@@ -337,20 +337,21 @@ const remoteSnapshot = (commitSha, files = []) => ({
   treeSha: commitSha ? `${commitSha}-tree` : "",
   files: new Map(files.map((file) => [file.path, file])),
 });
-const rebaseService = new GitHubSyncService(retryPlugin, () => {});
-let refPatchAttempts = 0;
-let baseTrees = [];
-rebaseService.getHead = async () => remoteSnapshot("latest", [remoteFile("changed.md", "old"), remoteFile("other.md", "changed")]);
-rebaseService.api = async (_token, method, endpoint, body) => {
+// A transient ref-update failure with an unchanged head retries on the same base.
+const sameHeadService = new GitHubSyncService(retryPlugin, () => {});
+let sameHeadPatches = 0;
+const sameHeadTrees = [];
+sameHeadService.getHead = async () => remoteSnapshot("planned", [remoteFile("changed.md", "old")]);
+sameHeadService.api = async (_token, method, endpoint, body) => {
   if (endpoint === "/git/trees") {
-    baseTrees.push(body.base_tree);
+    sameHeadTrees.push(body.base_tree);
     return { sha: `${body.base_tree}-new` };
   }
   if (endpoint === "/git/commits") return { sha: `${body.tree}-commit`, tree: { sha: body.tree } };
   if (endpoint.startsWith("/git/refs/heads/")) {
-    refPatchAttempts++;
-    if (refPatchAttempts === 1) {
-      const error = new Error("remote moved");
+    sameHeadPatches++;
+    if (sameHeadPatches === 1) {
+      const error = new Error("transient");
       error.name = "RemoteChangedDuringSyncError";
       throw error;
     }
@@ -358,14 +359,69 @@ rebaseService.api = async (_token, method, endpoint, body) => {
   }
   throw new Error(`unexpected api call: ${method} ${endpoint}`);
 };
-const rebaseCommit = await rebaseService.pushEntriesWithRemoteRetry(
+const rebaseCommit = await sameHeadService.pushEntriesWithRemoteRetry(
   "token",
   "main",
   remoteSnapshot("planned", [remoteFile("changed.md", "old")]),
   [{ path: "changed.md", mode: "100644", type: "blob", sha: "local" }],
+  false,
 );
-assert.equal(refPatchAttempts, 2);
-assert.deepEqual(baseTrees, ["planned-tree", "latest-tree"]);
+assert.equal(sameHeadPatches, 2);
+assert.deepEqual(sameHeadTrees, ["planned-tree", "planned-tree"]);
+
+// If the head moved, even on unrelated paths, the push must not silently
+// rebase onto a tree this device never pulled. It restarts the whole sync.
+const movedHeadService = new GitHubSyncService(retryPlugin, () => {});
+let movedHeadPatches = 0;
+movedHeadService.getHead = async () => remoteSnapshot("latest", [remoteFile("changed.md", "old"), remoteFile("other.md", "changed")]);
+movedHeadService.api = async (_token, method, endpoint, body) => {
+  if (endpoint === "/git/trees") return { sha: `${body.base_tree}-new` };
+  if (endpoint === "/git/commits") return { sha: `${body.tree}-commit`, tree: { sha: body.tree } };
+  if (endpoint.startsWith("/git/refs/heads/")) {
+    movedHeadPatches++;
+    const error = new Error("remote moved");
+    error.name = "RemoteChangedDuringSyncError";
+    throw error;
+  }
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+await assert.rejects(
+  movedHeadService.pushEntriesWithRemoteRetry(
+    "token",
+    "main",
+    remoteSnapshot("planned", [remoteFile("changed.md", "old")]),
+    [{ path: "changed.md", mode: "100644", type: "blob", sha: "local" }],
+    false,
+  ),
+  (error) => error.name === "RemoteChangedDuringSyncError",
+);
+assert.equal(movedHeadPatches, 1);
+
+// A two-way push records its commit as pending before moving the branch.
+const pendingEvents = [];
+const pendingPlugin = {
+  ...retryPlugin,
+  settings: { ...retryPlugin.settings },
+  recordPendingSyncCommit: async (sha) => { pendingEvents.push(`pending:${sha}`); },
+};
+const pendingService = new GitHubSyncService(pendingPlugin, () => {});
+pendingService.api = async (_token, method, endpoint, body) => {
+  if (endpoint === "/git/trees") return { sha: "pending-tree" };
+  if (endpoint === "/git/commits") return { sha: "pending-commit", tree: { sha: body.tree } };
+  if (endpoint.startsWith("/git/refs/heads/")) {
+    pendingEvents.push(`patch:${body.sha}`);
+    return { object: { sha: body.sha } };
+  }
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+await pendingService.pushEntriesWithRemoteRetry(
+  "token",
+  "main",
+  remoteSnapshot("planned"),
+  [{ path: "note.md", mode: "100644", type: "blob", sha: "local" }],
+  true,
+);
+assert.deepEqual(pendingEvents, ["pending:pending-commit", "patch:pending-commit"]);
 
 const emptyRemoteService = new GitHubSyncService(retryPlugin, () => {});
 let emptyTreeBody;
@@ -409,7 +465,7 @@ const emptyHead = await emptyHeadService.getHead("token", "main");
 assert.equal(emptyHead.commitSha, "");
 assert.equal(emptyHead.treeSha, "");
 assert.equal(emptyHead.files.size, 0);
-assert.equal(rebaseCommit, "latest-tree-new-commit");
+assert.equal(rebaseCommit, "planned-tree-new-commit");
 
 const pluginSettingsPlugin = {
   settings: { ...retryPlugin.settings, lastSyncedCommit: "base" },
@@ -427,7 +483,7 @@ pluginSettingsService.tryGetSnapshot = async () => remoteSnapshot("base", [
 pluginSettingsService.getLocalSnapshot = async () => map([
   [".obsidian/plugins/example/data.json", localFile(".obsidian/plugins/example/data.json", "local")],
 ]);
-pluginSettingsService.getRemoteModifiedAt = async () => 0;
+pluginSettingsService.getRemoteModification = async () => ({ timestamp: 0, fromThisDevice: false });
 pluginSettingsService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
 pluginSettingsService.ensureSelfEnabled = async () => null;
 pluginSettingsService.readLocalBinary = async (path) => buffer(path);
@@ -456,7 +512,7 @@ viewerStateService.tryGetSnapshot = async () => remoteSnapshot("base", [
 viewerStateService.getLocalSnapshot = async () => map([
   [".obsidian/plugins/gitsync-portal/sync-state.json", localFile(".obsidian/plugins/gitsync-portal/sync-state.json", "local")],
 ]);
-viewerStateService.getRemoteModifiedAt = async () => 0;
+viewerStateService.getRemoteModification = async () => ({ timestamp: 0, fromThisDevice: false });
 viewerStateService.createRemoteConflictCopy = async (_token, remote) => localFile(`${remote.path}.conflict-test.json`, "remote-copy");
 viewerStateService.ensureSelfEnabled = async () => null;
 viewerStateService.readLocalBinary = async (path) => buffer(path);
@@ -537,6 +593,97 @@ assert.equal(pushConflictCopies, 1);
 assert.equal(pushEntries.some((entry) => entry.path.includes(".conflict-")), false);
 assert.ok(pushEntries.some((entry) => entry.path === selfMainPath), "push-only must publish a locally installed plugin update even when the baseline matches local");
 assert.ok(pushEntries.some((entry) => entry.path === otherPluginPath), "push-only must publish updates for every installed community plugin");
+
+// --- Baseline integrity regression tests ---
+
+// A baseline that cannot be fetched for a transient reason must abort the sync,
+// not fall back to a baseline-free reconcile that turns every unsynced edit
+// into a conflict.
+const sha40 = (char) => char.repeat(40);
+const baselinePlugin = { ...retryPlugin, settings: { ...retryPlugin.settings, lastSyncedCommit: sha40("a") } };
+const transientBaseService = new GitHubSyncService(baselinePlugin, () => {});
+transientBaseService.getSnapshot = async () => { throw new Error("tokenForbidden"); };
+await assert.rejects(transientBaseService.tryGetSnapshot("token", sha40("a")), /tokenForbidden/);
+const missingBaseService = new GitHubSyncService(baselinePlugin, () => {});
+missingBaseService.getSnapshot = async () => {
+  const error = new Error("repositoryNotFound");
+  error.name = "NotFoundError";
+  throw error;
+};
+assert.equal(await missingBaseService.tryGetSnapshot("token", sha40("a")), null);
+
+// A pending commit that reached the branch becomes the baseline.
+const pendingBasePlugin = {
+  ...retryPlugin,
+  settings: { ...retryPlugin.settings, lastSyncedCommit: sha40("a"), pendingSyncCommit: sha40("b") },
+};
+const pendingBaseService = new GitHubSyncService(pendingBasePlugin, () => {});
+const requestedSnapshots = [];
+pendingBaseService.tryGetSnapshot = async (_token, sha) => {
+  requestedSnapshots.push(sha);
+  return remoteSnapshot(sha);
+};
+pendingBaseService.api = async (_token, method, endpoint) => {
+  if (endpoint === `/compare/${sha40("b")}...${sha40("c")}`) return { status: "ahead" };
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+const adoptedBase = await pendingBaseService.resolveBaseSnapshot("token", remoteSnapshot(sha40("c")));
+assert.equal(adoptedBase.commitSha, sha40("b"));
+assert.deepEqual(requestedSnapshots, [sha40("b")]);
+
+// A pending commit that never reached the branch is ignored.
+const strandedService = new GitHubSyncService(pendingBasePlugin, () => {});
+const strandedRequests = [];
+strandedService.tryGetSnapshot = async (_token, sha) => {
+  strandedRequests.push(sha);
+  return remoteSnapshot(sha);
+};
+strandedService.api = async () => ({ status: "behind" });
+const strandedBase = await strandedService.resolveBaseSnapshot("token", remoteSnapshot(sha40("c")));
+assert.equal(strandedBase.commitSha, sha40("a"));
+assert.deepEqual(strandedRequests, [sha40("a")]);
+
+// When this device made the latest remote change, local edits win the
+// conflict even if the remote commit timestamp looks newer.
+const ownPushPlugin = {
+  ...oneWayPlugin,
+  settings: { ...oneWayPlugin.settings, syncDeviceName: "test" },
+};
+const ownPushService = new GitHubSyncService(ownPushPlugin, () => {});
+ownPushService.getHead = async () => remoteSnapshot("remote", [remoteFile("note.md", "own-earlier-push")]);
+ownPushService.resolveBaseSnapshot = async () => remoteSnapshot("base", [remoteFile("note.md", "base")]);
+ownPushService.getLocalSnapshot = async () => map([["note.md", localFile("note.md", "newest-local", 1)]]);
+ownPushService.api = async (_token, method, endpoint) => {
+  if (endpoint.startsWith("/commits?")) {
+    return [{ commit: { message: "Vault sync from test at 2026-11-24T15:17:00.000Z", committer: { date: "2099-01-01T00:00:00Z" } } }];
+  }
+  if (method === "POST" && endpoint === "/git/blobs") return { sha: "local-blob" };
+  throw new Error(`unexpected api call: ${method} ${endpoint}`);
+};
+let ownPushRemoteCopies = 0;
+let ownPushLocalCopies = 0;
+let ownPushOverwrites = 0;
+let ownPushEntries = [];
+ownPushService.createRemoteConflictCopy = async (_token, remote) => {
+  ownPushRemoteCopies++;
+  return localFile(`${remote.path}.conflict-test`, remote.sha);
+};
+ownPushService.createConflictCopy = async (file) => {
+  ownPushLocalCopies++;
+  return localFile(`${file.path}.conflict-test`, file.sha);
+};
+ownPushService.writeRemoteFile = async () => { ownPushOverwrites++; };
+ownPushService.ensureSelfEnabled = async () => null;
+ownPushService.readLocalBinary = async () => buffer("newest-local");
+ownPushService.pushEntriesWithRemoteRetry = async (_token, _branch, _remote, entries) => {
+  ownPushEntries = entries;
+  return "own-push-commit";
+};
+await ownPushService.syncAttempt("token", "main");
+assert.equal(ownPushOverwrites, 0, "the newest local text must not be overwritten by this device's earlier push");
+assert.equal(ownPushLocalCopies, 0);
+assert.equal(ownPushRemoteCopies, 1);
+assert.ok(ownPushEntries.some((entry) => entry.path === "note.md"));
 
 // --- .gitignore Tests ---
 const gitignoreService = new GitHubSyncService({

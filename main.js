@@ -1808,7 +1808,7 @@ var GitHubSyncService = class {
   async syncAttempt(token, branch, mode = "two-way") {
     var _a, _b, _c;
     const remote = await this.getHead(token, branch);
-    const base = this.plugin.settings.lastSyncedCommit ? await this.tryGetSnapshot(token, this.plugin.settings.lastSyncedCommit) : null;
+    const base = await this.resolveBaseSnapshot(token, remote);
     this.update("scanning", this.plugin.t("statusHashing"));
     const local = await this.getLocalSnapshot();
     if (base) {
@@ -1827,15 +1827,15 @@ var GitHubSyncService = class {
     const localWins = /* @__PURE__ */ new Set();
     const conflictDecisions = await mapWithConcurrency(plan.conflicts, 6, async (conflict) => ({
       conflict,
-      remoteModifiedAt: await this.getRemoteModifiedAt(token, branch, conflict.path)
+      remoteModification: await this.getRemoteModification(token, branch, conflict.path)
     }));
-    for (const { conflict, remoteModifiedAt } of conflictDecisions) {
+    for (const { conflict, remoteModification } of conflictDecisions) {
       if (!conflict.remote && this.isSelfCoreFile(conflict.path)) {
         upload.set(conflict.path, conflict.local);
         protectedConflicts.add(conflict.path);
         continue;
       }
-      if (conflict.local.mtime >= remoteModifiedAt) {
+      if (remoteModification.fromThisDevice || conflict.local.mtime >= remoteModification.timestamp) {
         upload.set(conflict.path, conflict.local);
         localWins.add(conflict.path);
         if (conflict.remote) {
@@ -1877,7 +1877,7 @@ var GitHubSyncService = class {
     if (upload.size) {
       const { entries, uploaded, removed } = await this.buildUploadEntries(token, upload);
       pushed = uploaded + removed;
-      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries);
+      if (entries.length) commitSha = await this.pushEntriesWithRemoteRetry(token, branch, remote, entries, true);
     }
     const result = {
       mode,
@@ -1954,7 +1954,7 @@ var GitHubSyncService = class {
     const enabledList = await this.ensureSelfEnabled();
     if (enabledList) upload.set(enabledList.path, enabledList);
     const { entries, uploaded: pushed, removed: deleted } = await this.buildUploadEntries(token, upload);
-    const commitSha = entries.length ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries) : remote.commitSha;
+    const commitSha = entries.length ? await this.pushEntriesWithRemoteRetry(token, branch, remote, entries, false) : remote.commitSha;
     const conflicts = plan.conflicts.length;
     const result = {
       mode: "push-only",
@@ -2006,7 +2006,7 @@ var GitHubSyncService = class {
     }
     return false;
   }
-  async pushEntriesWithRemoteRetry(token, branch, plannedRemote, entries) {
+  async pushEntriesWithRemoteRetry(token, branch, plannedRemote, entries, recordPendingBaseline) {
     let remote = plannedRemote;
     let latestRemoteChange = null;
     for (let attempt = 1; attempt <= MAX_REF_UPDATE_ATTEMPTS; attempt++) {
@@ -2016,6 +2016,9 @@ var GitHubSyncService = class {
         remote = await this.getHead(token, branch);
         if (this.entriesTouchChangedRemotePaths(entries, plannedRemote, remote)) {
           throw new RemoteChangedDuringSyncError(this.plugin.t("remoteSamePathChanged"));
+        }
+        if (remote.commitSha !== plannedRemote.commitSha) {
+          throw new RemoteChangedDuringSyncError(this.plugin.t("remoteChanged", { detail: "" }));
         }
       }
       try {
@@ -2028,6 +2031,7 @@ var GitHubSyncService = class {
           tree: tree.sha,
           ...remote.commitSha ? { parents: [remote.commitSha] } : {}
         });
+        if (recordPendingBaseline) await this.plugin.recordPendingSyncCommit(commit.sha);
         if (remote.commitSha) {
           await this.api(token, "PATCH", `/git/refs/heads/${encodeURIComponent(branch)}`, {
             sha: commit.sha,
@@ -2073,12 +2077,37 @@ var GitHubSyncService = class {
       throw error;
     }
   }
+  async resolveBaseSnapshot(token, remote) {
+    const lastSynced = this.plugin.settings.lastSyncedCommit;
+    const pending = this.plugin.settings.pendingSyncCommit;
+    if (pending && pending !== lastSynced && remote.commitSha && await this.isInRemoteHistory(token, pending, remote.commitSha)) {
+      const pendingSnapshot = await this.tryGetSnapshot(token, pending);
+      if (pendingSnapshot) return pendingSnapshot;
+    }
+    return lastSynced ? this.tryGetSnapshot(token, lastSynced) : null;
+  }
+  async isInRemoteHistory(token, commitSha, headSha) {
+    if (!/^[0-9a-f]{40}$/i.test(commitSha)) return false;
+    if (commitSha === headSha) return true;
+    try {
+      const comparison = await this.api(
+        token,
+        "GET",
+        `/compare/${encodeURIComponent(commitSha)}...${encodeURIComponent(headSha)}`
+      );
+      return comparison.status === "ahead" || comparison.status === "identical";
+    } catch (error) {
+      if (isNotFoundError(error)) return false;
+      throw error;
+    }
+  }
   async tryGetSnapshot(token, commitSha) {
     if (!/^[0-9a-f]{40}$/i.test(commitSha)) return null;
     try {
       return await this.getSnapshot(token, commitSha);
-    } catch (e) {
-      return null;
+    } catch (error) {
+      if (isNotFoundError(error)) return null;
+      throw error;
     }
   }
   async getSnapshot(token, commitSha) {
@@ -2177,15 +2206,19 @@ var GitHubSyncService = class {
       return 0;
     }
   }
-  async getRemoteModifiedAt(token, branch, path) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+  async getRemoteModification(token, branch, path) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     try {
       const commits = await this.api(token, "GET", `/commits?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(path)}&per_page=1`);
       const date = (_h = (_g = (_c = (_b = (_a = commits[0]) == null ? void 0 : _a.commit) == null ? void 0 : _b.committer) == null ? void 0 : _c.date) != null ? _g : (_f = (_e = (_d = commits[0]) == null ? void 0 : _d.commit) == null ? void 0 : _e.author) == null ? void 0 : _f.date) != null ? _h : "";
       const timestamp = Date.parse(date);
-      return Number.isFinite(timestamp) ? timestamp : 0;
+      const message = (_k = (_j = (_i = commits[0]) == null ? void 0 : _i.commit) == null ? void 0 : _j.message) != null ? _k : "";
+      return {
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        fromThisDevice: message.startsWith(this.commitMessagePrefix())
+      };
     } catch (e) {
-      return 0;
+      return { timestamp: 0, fromThisDevice: false };
     }
   }
   async availableConflictPath(path, occupiedPaths) {
@@ -2282,9 +2315,12 @@ var GitHubSyncService = class {
       total: detected.total
     }));
   }
-  commitMessage() {
+  commitMessagePrefix() {
     const device = this.plugin.settings.syncDeviceName.trim() || "Obsidian";
-    return `Vault sync from ${device} at ${(/* @__PURE__ */ new Date()).toISOString()}`;
+    return `Vault sync from ${device} at `;
+  }
+  commitMessage() {
+    return `${this.commitMessagePrefix()}${(/* @__PURE__ */ new Date()).toISOString()}`;
   }
   async api(token, method, endpoint, body) {
     var _a;
@@ -2315,7 +2351,7 @@ var GitHubSyncService = class {
     }
     if (response.status === 401) throw new Error(this.plugin.t("tokenInvalid"));
     if (response.status === 403) throw new Error(this.plugin.t("tokenForbidden"));
-    if (response.status === 404) throw new Error(this.plugin.t("repositoryNotFound"));
+    if (response.status === 404) throw new NotFoundError(this.plugin.t("repositoryNotFound"));
     if ((response.status === 409 || response.status === 422) && /git repository is empty/i.test(apiMessage)) {
       throw new EmptyRepositoryError();
     }
@@ -2442,6 +2478,12 @@ var RemoteChangedDuringSyncError = class extends Error {
     this.name = "RemoteChangedDuringSyncError";
   }
 };
+var NotFoundError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "NotFoundError";
+  }
+};
 var EmptyRepositoryError = class extends Error {
   constructor() {
     super("Git Repository is empty");
@@ -2467,6 +2509,9 @@ async function mapWithConcurrency(items, limit, mapper) {
 }
 function isRemoteChangedDuringSync(error) {
   return error instanceof RemoteChangedDuringSyncError || error instanceof Error && error.name === "RemoteChangedDuringSyncError";
+}
+function isNotFoundError(error) {
+  return error instanceof NotFoundError || error instanceof Error && error.name === "NotFoundError";
 }
 function isEmptyRepositoryError(error) {
   return error instanceof EmptyRepositoryError || error instanceof Error && error.name === "EmptyRepositoryError";
@@ -3996,6 +4041,7 @@ var DEFAULT_SETTINGS = {
   syncPeriodically: false,
   syncIntervalMinutes: 30,
   lastSyncedCommit: "",
+  pendingSyncCommit: "",
   lastSyncAt: 0,
   lastSyncSummary: ""
 };
@@ -4012,6 +4058,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     this.syncQueue = Promise.resolve();
     this.syncQueueDepth = 0;
     this.syncInFlight = null;
+    this.lastBackgroundSyncError = "";
     this.syncStatus = { stage: "idle", message: "" };
     this.githubSync = new GitHubSyncService(this, (status) => {
       this.syncStatus = status;
@@ -4143,6 +4190,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       history: Array.isArray(loaded == null ? void 0 : loaded.history) ? loaded.history : [],
       quizProgress: (loaded == null ? void 0 : loaded.quizProgress) && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
       lastSyncedCommit: localSyncState.lastSyncedCommit,
+      pendingSyncCommit: localSyncState.pendingSyncCommit,
       lastSyncAt: localSyncState.lastSyncAt,
       lastSyncSummary: localSyncState.lastSyncSummary
     };
@@ -4178,6 +4226,10 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     this.applyReaderSettings();
     this.configurePeriodicSync();
     await this.refreshDashboard();
+  }
+  async recordPendingSyncCommit(commitSha) {
+    this.settings.pendingSyncCommit = commitSha;
+    await this.saveLocalSyncState();
   }
   getGitHubToken() {
     var _a;
@@ -4235,7 +4287,11 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     try {
       await this.saveSettings();
       const result = await this.githubSync.sync(mode);
-      if (mode !== "push-only") this.settings.lastSyncedCommit = result.commitSha;
+      if (mode !== "push-only") {
+        this.settings.lastSyncedCommit = result.commitSha;
+        this.settings.pendingSyncCommit = "";
+      }
+      this.lastBackgroundSyncError = "";
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed ? this.t(mode === "pull-only" ? "syncSummaryPull" : mode === "push-only" ? "syncSummaryPush" : "syncSummary", {
         pulled: result.pulled,
@@ -4250,7 +4306,9 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       await this.refreshDashboard();
       if (showNotice) new import_obsidian6.Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
-      if (showNotice) new import_obsidian6.Notice(error instanceof Error ? error.message : String(error), 8e3);
+      const message = error instanceof Error ? error.message : String(error);
+      if (showNotice || message !== this.lastBackgroundSyncError) new import_obsidian6.Notice(message, 8e3);
+      if (!showNotice) this.lastBackgroundSyncError = message;
     } finally {
       releaseLock();
       if (this.syncInFlight === lock) this.syncInFlight = null;
@@ -4471,6 +4529,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     const path = localSyncStatePath(this.app.vault.configDir);
     const fallback = {
       lastSyncedCommit: typeof (loaded == null ? void 0 : loaded.lastSyncedCommit) === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
+      pendingSyncCommit: DEFAULT_SETTINGS.pendingSyncCommit,
       lastSyncAt: typeof (loaded == null ? void 0 : loaded.lastSyncAt) === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
       lastSyncSummary: typeof (loaded == null ? void 0 : loaded.lastSyncSummary) === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary
     };
@@ -4480,6 +4539,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath));
       return {
         lastSyncedCommit: typeof parsed.lastSyncedCommit === "string" ? parsed.lastSyncedCommit : fallback.lastSyncedCommit,
+        pendingSyncCommit: typeof parsed.pendingSyncCommit === "string" ? parsed.pendingSyncCommit : fallback.pendingSyncCommit,
         lastSyncAt: typeof parsed.lastSyncAt === "number" ? parsed.lastSyncAt : fallback.lastSyncAt,
         lastSyncSummary: typeof parsed.lastSyncSummary === "string" ? parsed.lastSyncSummary : fallback.lastSyncSummary
       };
@@ -4491,6 +4551,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     const path = localSyncStatePath(this.app.vault.configDir);
     const state = {
       lastSyncedCommit: this.settings.lastSyncedCommit,
+      pendingSyncCommit: this.settings.pendingSyncCommit,
       lastSyncAt: this.settings.lastSyncAt,
       lastSyncSummary: this.settings.lastSyncSummary
     };
@@ -4503,6 +4564,7 @@ var GitSyncPortalPlugin = class extends import_obsidian6.Plugin {
     delete syncedSettings.favorites;
     delete syncedSettings.history;
     delete syncedSettings.lastSyncedCommit;
+    delete syncedSettings.pendingSyncCommit;
     delete syncedSettings.lastSyncAt;
     delete syncedSettings.lastSyncSummary;
     await this.saveData(syncedSettings);
