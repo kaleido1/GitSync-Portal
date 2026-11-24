@@ -45,6 +45,7 @@ export interface ViewerSettings {
   syncPeriodically: boolean;
   syncIntervalMinutes: number;
   lastSyncedCommit: string;
+  pendingSyncCommit: string;
   lastSyncAt: number;
   lastSyncSummary: string;
 }
@@ -57,6 +58,7 @@ interface ViewerSyncedState {
 
 interface ViewerLocalSyncState {
   lastSyncedCommit: string;
+  pendingSyncCommit: string;
   lastSyncAt: number;
   lastSyncSummary: string;
 }
@@ -87,6 +89,7 @@ const DEFAULT_SETTINGS: ViewerSettings = {
   syncPeriodically: false,
   syncIntervalMinutes: 30,
   lastSyncedCommit: "",
+  pendingSyncCommit: "",
   lastSyncAt: 0,
   lastSyncSummary: "",
 };
@@ -102,6 +105,7 @@ export default class GitSyncPortalPlugin extends Plugin {
   private syncQueue: Promise<void> = Promise.resolve();
   private syncQueueDepth = 0;
   private syncInFlight: Promise<void> | null = null;
+  private lastBackgroundSyncError = "";
   syncStatus: GitHubSyncStatus = { stage: "idle", message: "" };
   readonly githubSync = new GitHubSyncService(this, (status) => {
     this.syncStatus = status;
@@ -243,6 +247,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       history: Array.isArray(loaded?.history) ? loaded.history : [],
       quizProgress: loaded?.quizProgress && typeof loaded.quizProgress === "object" ? loaded.quizProgress : {},
       lastSyncedCommit: localSyncState.lastSyncedCommit,
+      pendingSyncCommit: localSyncState.pendingSyncCommit,
       lastSyncAt: localSyncState.lastSyncAt,
       lastSyncSummary: localSyncState.lastSyncSummary,
     };
@@ -284,6 +289,11 @@ export default class GitSyncPortalPlugin extends Plugin {
     this.applyReaderSettings();
     this.configurePeriodicSync();
     await this.refreshDashboard();
+  }
+
+  async recordPendingSyncCommit(commitSha: string): Promise<void> {
+    this.settings.pendingSyncCommit = commitSha;
+    await this.saveLocalSyncState();
   }
 
   getGitHubToken(): string {
@@ -351,7 +361,11 @@ export default class GitSyncPortalPlugin extends Plugin {
     try {
       await this.saveSettings();
       const result = await this.githubSync.sync(mode);
-      if (mode !== "push-only") this.settings.lastSyncedCommit = result.commitSha;
+      if (mode !== "push-only") {
+        this.settings.lastSyncedCommit = result.commitSha;
+        this.settings.pendingSyncCommit = "";
+      }
+      this.lastBackgroundSyncError = "";
       this.settings.lastSyncAt = Date.now();
       this.settings.lastSyncSummary = result.changed
         ? this.t(mode === "pull-only" ? "syncSummaryPull" : mode === "push-only" ? "syncSummaryPush" : "syncSummary", {
@@ -368,7 +382,11 @@ export default class GitSyncPortalPlugin extends Plugin {
       await this.refreshDashboard();
       if (showNotice) new Notice(this.t("syncCompleteNotice", { summary: this.settings.lastSyncSummary }));
     } catch (error) {
-      if (showNotice) new Notice(error instanceof Error ? error.message : String(error), 8000);
+      const message = error instanceof Error ? error.message : String(error);
+      // Background syncs used to fail silently, which hid the failures that
+      // leave a stale baseline behind. Show each distinct background error once.
+      if (showNotice || message !== this.lastBackgroundSyncError) new Notice(message, 8000);
+      if (!showNotice) this.lastBackgroundSyncError = message;
     } finally {
       releaseLock();
       if (this.syncInFlight === lock) this.syncInFlight = null;
@@ -623,6 +641,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     const path = localSyncStatePath(this.app.vault.configDir);
     const fallback: ViewerLocalSyncState = {
       lastSyncedCommit: typeof loaded?.lastSyncedCommit === "string" ? loaded.lastSyncedCommit : DEFAULT_SETTINGS.lastSyncedCommit,
+      pendingSyncCommit: DEFAULT_SETTINGS.pendingSyncCommit,
       lastSyncAt: typeof loaded?.lastSyncAt === "number" ? loaded.lastSyncAt : DEFAULT_SETTINGS.lastSyncAt,
       lastSyncSummary: typeof loaded?.lastSyncSummary === "string" ? loaded.lastSyncSummary : DEFAULT_SETTINGS.lastSyncSummary,
     };
@@ -634,6 +653,7 @@ export default class GitSyncPortalPlugin extends Plugin {
       const parsed = JSON.parse(await this.app.vault.adapter.read(sourcePath)) as Partial<ViewerLocalSyncState>;
       return {
         lastSyncedCommit: typeof parsed.lastSyncedCommit === "string" ? parsed.lastSyncedCommit : fallback.lastSyncedCommit,
+        pendingSyncCommit: typeof parsed.pendingSyncCommit === "string" ? parsed.pendingSyncCommit : fallback.pendingSyncCommit,
         lastSyncAt: typeof parsed.lastSyncAt === "number" ? parsed.lastSyncAt : fallback.lastSyncAt,
         lastSyncSummary: typeof parsed.lastSyncSummary === "string" ? parsed.lastSyncSummary : fallback.lastSyncSummary,
       };
@@ -646,6 +666,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     const path = localSyncStatePath(this.app.vault.configDir);
     const state: ViewerLocalSyncState = {
       lastSyncedCommit: this.settings.lastSyncedCommit,
+      pendingSyncCommit: this.settings.pendingSyncCommit,
       lastSyncAt: this.settings.lastSyncAt,
       lastSyncSummary: this.settings.lastSyncSummary,
     };
@@ -658,6 +679,7 @@ export default class GitSyncPortalPlugin extends Plugin {
     delete syncedSettings.favorites;
     delete syncedSettings.history;
     delete syncedSettings.lastSyncedCommit;
+    delete syncedSettings.pendingSyncCommit;
     delete syncedSettings.lastSyncAt;
     delete syncedSettings.lastSyncSummary;
     await this.saveData(syncedSettings);
